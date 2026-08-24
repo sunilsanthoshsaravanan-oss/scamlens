@@ -22,9 +22,9 @@ import {
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------
-   ScamLens — "Check before you pay."
-   Design language: dark ink surface, electric-blue "lens" signature,
-   mono readouts for anything numeric/technical, Space Grotesk display.
+ScamLens — "Check before you pay."
+Design language: dark ink surface, electric-blue "lens" signature,
+mono readouts for anything numeric/technical, Space Grotesk display.
 --------------------------------------------------------------------- */
 
 const CASES = {
@@ -67,7 +67,8 @@ const CASES = {
     id: "low",
     tag: "🟢 Legitimate",
     accent: "safe",
-    message: "Payment of ₹799 to ABC Store completed successfully. Transaction ID: DEMO-12345.",
+    message:
+      "Payment of ₹799 to ABC Store completed successfully. Transaction ID: DEMO-12345.",
     level: "low",
     score: 6,
     headline: "No major suspicious payment indicators were detected.",
@@ -99,8 +100,7 @@ function levelMeta(level) {
   return { label: "LOW RISK", dot: "🟢" };
 }
 
-/* Deterministic fallback engine for free-typed text, so the demo never
-   depends on an external API and never breaks on custom input. */
+/* Deterministic fallback engine for free-typed text with advanced phishing detection */
 function analyzeCustomText(raw) {
   const text = raw.trim();
   const norm = text.toLowerCase();
@@ -111,23 +111,64 @@ function analyzeCustomText(raw) {
   }
 
   const signals = [];
-  if (/pay ₹|processing fee|advance payment|send money|transfer.*fee/i.test(text))
+
+  // 1. Unexpected payment request — weight 30
+  if (/pay ₹|processing fee|advance payment|send money|transfer.*fee|payment.*pending|deposit/i.test(text)) {
     signals.push({ label: "Unexpected payment request", icon: "rupee", weight: 30 });
-  if (/immediately|urgent|now|expire|hurry|act fast|within \d+ (min|hour)/i.test(text))
-    signals.push({ label: "Urgency / manipulation", icon: "clock", weight: 25 });
-  if (/won|prize|congratulations|lucky draw|lottery|selected/i.test(text))
+  }
+
+  // 2. Urgency/manipulation — weight 15
+  if (/immediately|urgent|within \d+ (hours?|days?)|do not delay|asap|act fast|right now|don't wait|hurry|unless you/i.test(text)) {
+    signals.push({ label: "Urgency / manipulation", icon: "clock", weight: 15 });
+  }
+
+  // 3. Prize/reward bait — weight 20
+  if (/won|prize|congratulations|lucky draw|lottery|selected|claim.*reward|bonus|free.*money/i.test(text)) {
     signals.push({ label: "Prize bait", icon: "gift", weight: 20 });
-  if (/otp|pin|cvv|processing fee|security deposit|activation fee/i.test(text))
-    signals.push({ label: "Suspicious financial instruction", icon: "alert", weight: 16 });
-  if (/http:\/\/|bit\.ly|tinyurl|click here|click the link/i.test(text))
-    signals.push({ label: "Suspicious link", icon: "link", weight: 18 });
-  if (/refund|verify|verification/i.test(text) && signals.length === 0)
-    signals.push({ label: "Unexpected verification instruction", icon: "info", weight: 20 });
+  }
 
-  const legit = /completed successfully|transaction id|order confirmed|delivered/i.test(text);
+  // 4. Sensitive credential request (OTP, PIN, CVV, password, passcode) — weight 25
+  if (/otp|pin|cvv|password|passcode|security code|2fa|two-factor|confirm.*password|enter.*otp|provide.*pin/i.test(text)) {
+    signals.push({ label: "Sensitive credential request", icon: "alert", weight: 25 });
+  }
 
-  // Score is the direct sum of matched signal weights — no hidden base offset —
-  // so it stays consistent with the pitch deck's worked example (30+25+20+16 = 91).
+  // 5. KYC/account verification request — weight 20
+  if (/kyc|know your customer|verify.*account|account.*verification|identity.*verification|complete.*verification|confirm.*identity/i.test(text)) {
+    signals.push({ label: "KYC / account verification request", icon: "info", weight: 20 });
+  }
+
+  // 6. Account blocking/security threat — weight 20
+  if (/will be (?:blocked|suspended|deactivat|closed)|account.*(?:block|suspend|lock|restrict)|access.*denied|unauthorized activity|unusual activity|suspicious activity/i.test(text)) {
+    signals.push({ label: "Account blocking / security threat", icon: "alert", weight: 20 });
+  }
+
+  // 7. Brand impersonation — weight 20
+  // Detect when specific bank/company names appear with formal customer greetings
+  const bankNames = /hdfc|icici|axis|sbi|state bank|american express|bank of america|chase|wellsfargo|paypal|amazon|apple|microsoft|google|facebook|linkedin|uber|flipkart|whatsapp/i;
+  const formalGreeting = /dear (?:customer|user|member|valued customer|sir|madam)/i;
+  if (bankNames.test(text) && formalGreeting.test(text)) {
+    signals.push({ label: "Brand impersonation", icon: "link", weight: 20 });
+  }
+
+  // 8. Suspicious URL/link — weight 25
+  if (/https?:\/\/[^\s]+|bit\.ly|tinyurl|short\.link|click here|click the link|tap here|visit link|open.*link|verify via/i.test(text)) {
+    signals.push({ label: "Suspicious URL / link", icon: "link", weight: 25 });
+  }
+
+  // 9. Delivery/refund scam pattern — weight 15
+  if (/refund|delivery.*failed|reschedul|redelivery|confirm.*delivery|retry.*delivery|pending.*refund|parcel/i.test(text)) {
+    signals.push({ label: "Delivery / refund scam pattern", icon: "info", weight: 15 });
+  }
+
+  // 10. Suspicious financial instruction — weight 15
+  if (/activation fee|security deposit|balance verification|update.*payment|verify.*payment|account.*fund/i.test(text)) {
+    signals.push({ label: "Suspicious financial instruction", icon: "rupee", weight: 15 });
+  }
+
+  // Check for legitimate transaction indicators
+  const legit = /completed successfully|transaction id|order confirmed|delivered|payment received/i.test(text);
+
+  // Calculate score
   let score;
   if (signals.length === 0 && legit) {
     score = 6;
@@ -137,9 +178,79 @@ function analyzeCustomText(raw) {
     score = Math.min(98, signals.reduce((s, x) => s + x.weight, 0));
   }
 
+  // Determine level
   let level = "low";
   if (score >= 70) level = "high";
   else if (score >= 30) level = "medium";
+
+  // Dynamic headline
+  let headline;
+  if (level === "high") {
+    headline = "Multiple suspicious indicators detected.";
+  } else if (level === "medium") {
+    headline = "Some signals require manual verification.";
+  } else {
+    headline = "No major suspicious indicators were detected.";
+  }
+
+  // Dynamic explanation based on detected signals
+  let explanation;
+  if (signals.length === 0) {
+    explanation = "No suspicious patterns were detected in this message. It appears to be a routine notification.";
+  } else {
+    const hasPayment = signals.some(s => s.label.includes("payment") || s.label.includes("financial"));
+    const hasCredential = signals.some(s => s.label.includes("credential"));
+    const hasVerification = signals.some(s => s.label.includes("verification") || s.label.includes("KYC"));
+    const hasThreats = signals.some(s => s.label.includes("blocking"));
+    const hasLink = signals.some(s => s.label.includes("URL") || s.label.includes("link"));
+    const hasImpersonation = signals.some(s => s.label.includes("impersonation"));
+    const hasUrgency = signals.some(s => s.label.includes("urgency"));
+    const hasDelivery = signals.some(s => s.label.includes("Delivery"));
+    const hasPrize = signals.some(s => s.label.includes("Prize"));
+
+    if (hasImpersonation && hasThreats && (hasVerification || hasCredential)) {
+      explanation = "This message impersonates a legitimate institution and uses account-blocking threats to pressure you into verifying credentials. This is a classic phishing and social engineering attack. Do not click links or provide any credentials.";
+    } else if (hasImpersonation && hasLink && hasVerification) {
+      explanation = "This message impersonates a known brand and directs you to a link to verify or complete KYC. The link and domain are likely fraudulent. Verify independently through official channels only.";
+    } else if (hasCredential && (hasImpersonation || hasThreats || hasUrgency)) {
+      explanation = "This message requests sensitive credentials (OTP, PIN, password, etc.) using social engineering tactics. Legitimate institutions never request credentials via message. This is a phishing attack.";
+    } else if (hasThreats && (hasUrgency || hasVerification)) {
+      explanation = "This message uses urgent language and account-blocking threats to manipulate you into taking immediate action, often requesting verification or credentials. This is a classic phishing and social engineering pattern.";
+    } else if (hasPayment && hasUrgency) {
+      explanation = "This message combines urgency with an unexpected payment or fee request. These patterns are commonly associated with financial scams. Verify independently.";
+    } else if (hasDelivery && hasLink) {
+      explanation = "This message references a delivery issue or refund and directs you to click a link. This is a common phishing pattern used to steal credentials or payment information.";
+    } else if (hasPrize && hasUrgency) {
+      explanation = "This message claims you've won a prize and uses urgency to manipulate you. Prize scams often lead to credential theft or payment fraud.";
+    } else if (hasLink && (hasImpersonation || hasVerification)) {
+      explanation = "This message contains suspicious links, possibly impersonating a brand or requesting verification. Do not click links from untrusted sources.";
+    } else if (hasLink) {
+      explanation = "This message contains suspicious links that could lead to phishing or malware. Avoid clicking links and verify the sender through official channels.";
+    } else {
+      explanation = "This message contains multiple suspicious indicators. Avoid clicking links, providing credentials, or making payments until you verify the sender through official channels.";
+    }
+  }
+
+  // Dynamic recommendation
+  let recommendation;
+  if (signals.length === 0) {
+    recommendation = "No action needed — no major risk signals were found.";
+  } else {
+    const hasCredential = signals.some(s => s.label.includes("credential"));
+    const hasLink = signals.some(s => s.label.includes("URL") || s.label.includes("link"));
+    const hasPayment = signals.some(s => s.label.includes("payment") || s.label.includes("financial"));
+    const hasThreats = signals.some(s => s.label.includes("blocking"));
+
+    if (hasCredential || hasThreats) {
+      recommendation = "Do NOT provide credentials, OTP, PIN, passwords, or sensitive information. Contact the institution directly using official contact information from their website.";
+    } else if (hasLink) {
+      recommendation = "Do NOT click links in this message. Visit the official website or app directly using a fresh URL or call the institution's official support number.";
+    } else if (hasPayment) {
+      recommendation = "Do NOT make any payment or transfer funds. Verify the request independently through official channels before proceeding.";
+    } else {
+      recommendation = "Verify the sender independently using official contact information. Do not click links or provide sensitive information.";
+    }
+  }
 
   return {
     id: "custom",
@@ -147,25 +258,10 @@ function analyzeCustomText(raw) {
     message: text,
     level,
     score,
-    headline:
-      level === "high"
-        ? "Multiple suspicious indicators detected."
-        : level === "medium"
-        ? "Some signals require manual verification."
-        : "No major suspicious payment indicators were detected.",
+    headline,
     reasons: signals.map((s) => ({ label: s.label, icon: s.icon })),
-    recommendation:
-      level === "high"
-        ? "Verify the sender independently before making any payment."
-        : level === "medium"
-        ? "Verify this through the official app or a known support channel."
-        : "No action needed — no major risk signals were found.",
-    explanation:
-      level === "high"
-        ? "This message combines urgency with an unexpected payment or fee request. These patterns are commonly associated with payment scams. Verify the sender independently before making a payment."
-        : level === "medium"
-        ? "This message asks for confirmation or verification tied to a payment, which warrants a manual check through an official channel before proceeding."
-        : "No urgency language, prize bait, or unusual payment instructions were detected in this message.",
+    recommendation,
+    explanation,
   };
 }
 
@@ -241,7 +337,7 @@ function HomeScreen({ goInput, goDemo, goHow }) {
         <h1 className="sl-wordmark">
           Scam<span style={{ color: "var(--brand)" }}>Lens</span>
         </h1>
-        <p className="sl-tagline">“Check before you pay.”</p>
+        <p className="sl-tagline">"Check before you pay."</p>
         <p className="sl-home-desc">Analyze suspicious payment messages before you act.</p>
       </div>
 
@@ -286,7 +382,7 @@ function DemoPickerScreen({ pick, goBack }) {
                 <span className="sl-demo-tile-tag">{c.tag}</span>
                 <ArrowRight size={16} />
               </div>
-              <p className="sl-demo-tile-msg">“{c.message}”</p>
+              <p className="sl-demo-tile-msg">"{c.message}"</p>
               <p className="sl-demo-tile-desc">{desc}</p>
             </button>
           ))}
@@ -569,7 +665,7 @@ function HowScreen({ goBack }) {
   const flow = [
     { t: "User screenshot", d: "Payment message captured on-device" },
     { t: "Text extraction", d: "Prototype simulates OCR; pasted text is processed directly" },
-    { t: "Risk signal engine", d: "Deterministic checks for scam patterns" },
+    { t: "Risk signal engine", d: "Deterministic checks for scam patterns including phishing and impersonation" },
     { t: "AI explanation", d: "This hackathon prototype demonstrates the AI explanation layer using prototype logic — a production version can connect it to a live AI model" },
     { t: "Risk score", d: "0–100 score with a clear classification" },
     { t: "Recommended action", d: "One concrete next step for the user" },
@@ -578,7 +674,7 @@ function HowScreen({ goBack }) {
     <div className="sl-screen">
       <TopBar title="How it works" onBack={goBack} />
       <div className="sl-screen-body">
-        <p className="sl-section-lead">Five lightweight steps — no bank integration, no server-side ML.</p>
+        <p className="sl-section-lead">Six lightweight steps — no bank integration, no server-side ML.</p>
         <div className="sl-flow">
           {flow.map((f, idx) => (
             <div className="sl-flow-row" key={f.t}>
