@@ -22,28 +22,16 @@ import {
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------
-ScamLens — "Check before you act."
-General phishing + scam risk detection prototype.
-
-Design language:
-dark ink surface, electric-blue "lens" signature,
-mono readouts for anything numeric/technical,
-Space Grotesk display.
-
-IMPORTANT:
-This is a deterministic prototype risk engine.
-The 0–100 score is a risk score, NOT a calibrated probability.
---------------------------------------------------------------------- */
-
-/* ---------------------------------------------------------------------
-DEMO CASES
+ScamLens — "Check before you pay."
+Design language: dark ink surface, electric-blue "lens" signature,
+mono readouts for anything numeric/technical, Space Grotesk display.
 --------------------------------------------------------------------- */
 
 const CASES = {
   high: {
     id: "high",
     tag: "🔴 Suspicious",
-    accent: "high",
+    accent: "danger",
     message:
       "Congratulations! You have won ₹25,000. Pay ₹499 processing fee immediately to claim your prize.",
     level: "high",
@@ -55,18 +43,35 @@ const CASES = {
       { label: "Prize bait", icon: "gift" },
       { label: "Suspicious financial instruction", icon: "alert" },
     ],
-    recommendation:
-      "Verify the sender independently before making any payment.",
+    recommendation: "Verify the sender independently before making any payment.",
     explanation:
       "This message requests an unexpected processing fee while using urgency and prize language. These patterns can be associated with payment scams. Verify the sender independently before making a payment.",
   },
-
+  gaming: {
+    id: "gaming",
+    tag: "🎮 Gaming Scam",
+    accent: "danger",
+    message:
+      "Congratulations! You have been selected for a ₹15,000 BGMI tournament reward. Pay ₹299 verification fee immediately to claim your prize.",
+    level: "high",
+    score: 92,
+    headline: "Gaming-related scam indicators detected.",
+    reasons: [
+      { label: "Unexpected payment request", icon: "rupee" },
+      { label: "Urgency / manipulation", icon: "clock" },
+      { label: "Prize bait", icon: "gift" },
+      { label: "Gaming-related scam pattern", icon: "alert" },
+    ],
+    recommendation:
+      "Do not pay the verification fee. Verify the tournament through its official channel.",
+    explanation:
+      "This message combines gaming-related content with an unexpected payment request and urgent language. These patterns can be associated with payment scams.",
+  },
   medium: {
     id: "medium",
     tag: "🟡 Needs Verification",
-    accent: "medium",
-    message:
-      "Your refund of ₹1,200 is ready. Complete verification to receive it.",
+    accent: "warn",
+    message: "Your refund of ₹1,200 is ready. Complete verification to receive it.",
     level: "medium",
     score: 58,
     headline: "Some signals require manual verification.",
@@ -74,32 +79,25 @@ const CASES = {
       { label: "Unexpected verification instruction", icon: "info" },
       { label: "Financial request requiring confirmation", icon: "rupee" },
     ],
-    recommendation:
-      "Verify the refund through the official merchant/app.",
+    recommendation: "Verify the refund through the official merchant/app.",
     explanation:
       "This message asks you to complete a verification step in order to receive money — a pattern also seen in refund-related scams. Confirm the refund directly through the merchant's official app before taking any action.",
   },
-
   low: {
     id: "low",
     tag: "🟢 Legitimate",
-    accent: "low",
+    accent: "safe",
     message:
       "Payment of ₹799 to ABC Store completed successfully. Transaction ID: DEMO-12345.",
     level: "low",
     score: 6,
     headline: "No major suspicious payment indicators were detected.",
     reasons: [],
-    recommendation:
-      "No action needed — this reads as a standard transaction confirmation.",
+    recommendation: "No action needed — this reads as a standard transaction confirmation.",
     explanation:
       "This message follows the structure of a routine transaction confirmation: a completed payment, a specific amount, and a transaction ID. No urgency, prize, or unusual payment instructions were found.",
   },
 };
-
-/* ---------------------------------------------------------------------
-ICONS
---------------------------------------------------------------------- */
 
 const ICONS = {
   rupee: IndianRupee,
@@ -110,773 +108,181 @@ const ICONS = {
   link: Link2,
 };
 
-/* ---------------------------------------------------------------------
-ACCENTS
---------------------------------------------------------------------- */
-
 const ACCENT = {
-  high: {
-    fg: "var(--danger)",
-    soft: "var(--danger-soft)",
-    ring: "var(--danger)",
-  },
-
-  medium: {
-    fg: "var(--warn)",
-    soft: "var(--warn-soft)",
-    ring: "var(--warn)",
-  },
-
-  low: {
-    fg: "var(--safe)",
-    soft: "var(--safe-soft)",
-    ring: "var(--safe)",
-  },
+  high: { fg: "var(--danger)", soft: "var(--danger-soft)", ring: "var(--danger)" },
+  medium: { fg: "var(--warn)", soft: "var(--warn-soft)", ring: "var(--warn)" },
+  low: { fg: "var(--safe)", soft: "var(--safe-soft)", ring: "var(--safe)" },
 };
 
-/* ---------------------------------------------------------------------
-LEVEL META
---------------------------------------------------------------------- */
-
 function levelMeta(level) {
-  if (level === "high") {
-    return {
-      label: "HIGH RISK",
-      dot: "🔴",
-    };
-  }
-
-  if (level === "medium") {
-    return {
-      label: "NEEDS VERIFICATION",
-      dot: "🟡",
-    };
-  }
-
-  return {
-    label: "LOW RISK",
-    dot: "🟢",
-  };
+  if (level === "high") return { label: "HIGH RISK", dot: "🔴" };
+  if (level === "medium") return { label: "NEEDS VERIFICATION", dot: "🟡" };
+  return { label: "LOW RISK", dot: "🟢" };
 }
 
-/* ---------------------------------------------------------------------
-GENERALIZED PHISHING / SCAM ANALYSIS ENGINE
---------------------------------------------------------------------- */
-
+/* Deterministic fallback engine for free-typed text with advanced phishing detection */
 function analyzeCustomText(raw) {
   const text = raw.trim();
   const norm = text.toLowerCase();
 
-  /* -------------------------------------------------------------
-     Reuse exact demo cases
-  ------------------------------------------------------------- */
-
+  // If it matches a canonical demo message closely, reuse the exact case.
   for (const c of Object.values(CASES)) {
-    if (norm === c.message.toLowerCase()) {
-      return c;
-    }
+    if (norm === c.message.toLowerCase()) return c;
   }
 
   const signals = [];
 
-  const addSignal = (label, icon, weight) => {
-    signals.push({
-      label,
-      icon,
-      weight,
-    });
-  };
-
-  /* -------------------------------------------------------------
-     1. URGENCY / PRESSURE
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      urgent|
-      immediately|
-      act now|
-      act immediately|
-      asap|
-      right now|
-      do not delay|
-      don't delay|
-      don't wait|
-      hurry|
-      last chance|
-      final warning|
-      expires today|
-      within\s+\d+\s*(minutes?|hours?|days?)|
-      before\s+\d+\s*(minutes?|hours?)
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Urgency / manipulation",
-      "clock",
-      12
-    );
+  // 1. Unexpected payment request — weight 30
+  if (/pay ₹|processing fee|advance payment|send money|transfer.*fee|payment.*pending|deposit/i.test(text)) {
+    signals.push({ label: "Unexpected payment request", icon: "rupee", weight: 30 });
   }
 
-  /* -------------------------------------------------------------
-     2. THREATS / CONSEQUENCES
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      suspended|
-      suspension|
-      blocked|
-      block(ed)?|
-      locked|
-      restricted|
-      disabled|
-      deactivated|
-      terminated|
-      closed|
-      deleted|
-      banned|
-      access denied|
-      will be removed|
-      will be cancelled|
-      legal action|
-      penalty
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Threat or negative consequence",
-      "alert",
-      15
-    );
+  // 2. Urgency/manipulation — weight 15
+  if (/immediately|urgent|within \d+ (hours?|days?)|do not delay|asap|act fast|right now|don't wait|hurry|unless you/i.test(text)) {
+    signals.push({ label: "Urgency / manipulation", icon: "clock", weight: 15 });
   }
 
-  /* -------------------------------------------------------------
-     3. CREDENTIAL HARVESTING
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      password|
-      passcode|
-      username|
-      login|
-      sign in|
-      log in|
-      credential|
-      otp|
-      one[- ]time password|
-      pin|
-      cvv|
-      card number|
-      debit card|
-      credit card|
-      security code|
-      2fa|
-      two[- ]factor|
-      authentication code|
-      verification code
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Sensitive credential request",
-      "alert",
-      22
-    );
+  // 3. Prize/reward bait — weight 20
+  if (/won|prize|congratulations|lucky draw|lottery|selected|claim.*reward|bonus|free.*money/i.test(text)) {
+    signals.push({ label: "Prize bait", icon: "gift", weight: 20 });
   }
 
-  /* -------------------------------------------------------------
-     4. VERIFICATION / KYC / IDENTITY
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      verify|
-      verification|
-      verify your identity|
-      confirm your identity|
-      identity verification|
-      kyc|
-      know your customer|
-      update your details|
-      confirm your details|
-      validate your account|
-      activate your account|
-      re[- ]authenticate|
-      authenticate
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Identity / account verification request",
-      "info",
-      14
-    );
+  // 4. Sensitive credential request (OTP, PIN, CVV, password, passcode) — weight 25
+  if (/otp|pin|cvv|password|passcode|security code|2fa|two-factor|confirm.*password|enter.*otp|provide.*pin/i.test(text)) {
+    signals.push({ label: "Sensitive credential request", icon: "alert", weight: 25 });
   }
 
-  /* -------------------------------------------------------------
-     5. PAYMENT / MONEY REQUEST
-  ------------------------------------------------------------- */
-
-  if (
-    /(
-      ₹\s?\d+|
-      \$\s?\d+|
-      €\s?\d+|
-      £\s?\d+|
-      \bpay\b|
-      \bpayment\b|
-      \btransfer\b|
-      \bdeposit\b|
-      \bfee\b|
-      \bprocessing fee\b|
-      \bactivation fee\b|
-      \bsecurity deposit\b|
-      \brefund fee\b|
-      \bregistration fee\b|
-      \bupi\b|
-      \bbank details\b|
-      \baccount details\b|
-      \bwallet\b
-    )/ix.test(text)
-  ) {
-    addSignal(
-      "Financial request",
-      "rupee",
-      16
-    );
+  // 5. KYC/account verification request — weight 20
+  if (/kyc|know your customer|verify.*account|account.*verification|identity.*verification|complete.*verification|confirm.*identity/i.test(text)) {
+    signals.push({ label: "KYC / account verification request", icon: "info", weight: 20 });
   }
 
-  /* -------------------------------------------------------------
-     6. PRIZE / REWARD / BAIT
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      congratulations|
-      you have won|
-      winner|
-      prize|
-      reward|
-      giveaway|
-      lottery|
-      lucky draw|
-      selected|
-      bonus|
-      cashback|
-      free money|
-      claim your reward|
-      exclusive offer|
-      gift card
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Prize or reward bait",
-      "gift",
-      14
-    );
+  // 6. Account blocking/security threat — weight 20
+  if (/will be (?:blocked|suspended|deactivat|closed)|account.*(?:block|suspend|lock|restrict)|access.*denied|unauthorized activity|unusual activity|suspicious activity/i.test(text)) {
+    signals.push({ label: "Account blocking / security threat", icon: "alert", weight: 20 });
   }
 
-  /* -------------------------------------------------------------
-     7. URL DETECTION
-  ------------------------------------------------------------- */
-
-  const urls =
-    text.match(
-      /https?:\/\/[^\s]+|www\.[^\s]+/gi
-    ) || [];
-
-  if (urls.length > 0) {
-    let suspiciousUrl = false;
-
-    for (const url of urls) {
-      const cleanUrl = url
-        .replace(/[),.!?]+$/, "")
-        .toLowerCase();
-
-      /* URL shorteners */
-
-      if (
-        /bit\.ly|tinyurl\.com|t\.co|shorturl|short\.link|is\.gd|cutt\.ly|ow\.ly/i.test(
-          cleanUrl
-        )
-      ) {
-        suspiciousUrl = true;
-      }
-
-      /* IP-address URLs */
-
-      if (
-        /https?:\/\/\d{1,3}(\.\d{1,3}){3}/i.test(
-          cleanUrl
-        )
-      ) {
-        suspiciousUrl = true;
-      }
-
-      /* Suspicious URL language */
-
-      if (
-        /(verify|login|secure|update|account|claim|reward|wallet|payment|confirm)/i.test(
-          cleanUrl
-        )
-      ) {
-        suspiciousUrl = true;
-      }
-
-      /* Lookalike-style URL structures */
-
-      if (
-        /[-_](login|verify|secure|support|account)|login[-_]|verify[-_]|secure[-_]/i.test(
-          cleanUrl
-        )
-      ) {
-        suspiciousUrl = true;
-      }
-    }
-
-    if (suspiciousUrl) {
-      addSignal(
-        "Suspicious URL / link",
-        "link",
-        20
-      );
-    } else {
-      addSignal(
-        "External link detected",
-        "link",
-        6
-      );
-    }
+  // 7. Brand impersonation — weight 20
+  // Detect when specific bank/company names appear with formal customer greetings
+  const bankNames = /hdfc|icici|axis|sbi|state bank|american express|bank of america|chase|wellsfargo|paypal|amazon|apple|microsoft|google|facebook|linkedin|uber|flipkart|whatsapp/i;
+  const formalGreeting = /dear (?:customer|user|member|valued customer|sir|madam)/i;
+  if (bankNames.test(text) && formalGreeting.test(text)) {
+    signals.push({ label: "Brand impersonation", icon: "link", weight: 20 });
   }
 
-  /* -------------------------------------------------------------
-     8. LINK ACTION LANGUAGE
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      click here|
-      click the link|
-      tap here|
-      open the link|
-      visit the link|
-      follow this link|
-      verify using this link|
-      login using this link|
-      download now|
-      open attachment
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Action requested through message",
-      "link",
-      10
-    );
+  // 8. Suspicious URL/link — weight 25
+  if (/https?:\/\/[^\s]+|bit\.ly|tinyurl|short\.link|click here|click the link|tap here|visit link|open.*link|verify via/i.test(text)) {
+    signals.push({ label: "Suspicious URL / link", icon: "link", weight: 25 });
   }
 
-  /* -------------------------------------------------------------
-     9. ATTACHMENTS / DOWNLOADS
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      attachment|
-      attached file|
-      download|
-      download now|
-      \.exe|
-      \.scr|
-      \.zip|
-      \.html|
-      \.apk|
-      document attached
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Suspicious attachment or download",
-      "alert",
-      12
-    );
+  // 9. Delivery/refund scam pattern — weight 15
+  if (/refund|delivery.*failed|reschedul|redelivery|confirm.*delivery|retry.*delivery|pending.*refund|parcel/i.test(text)) {
+    signals.push({ label: "Delivery / refund scam pattern", icon: "info", weight: 15 });
   }
 
-  /* -------------------------------------------------------------
-     10. COMMON SCAM SCENARIOS
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      refund|
-      parcel|
-      package|
-      delivery failed|
-      redelivery|
-      reschedule delivery|
-      customs fee|
-      shipping fee|
-      job offer|
-      selected for the position|
-      interview fee|
-      registration fee|
-      customer support|
-      technical support|
-      account support
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Common scam scenario detected",
-      "info",
-      10
-    );
+  // 10. Suspicious financial instruction — weight 15
+  if (/activation fee|security deposit|balance verification|update.*payment|verify.*payment|account.*fund/i.test(text)) {
+    signals.push({ label: "Suspicious financial instruction", icon: "rupee", weight: 15 });
   }
 
-  /* -------------------------------------------------------------
-     11. GENERIC GREETING
-  ------------------------------------------------------------- */
-
-  if (
-    /\b(
-      dear customer|
-      dear user|
-      dear member|
-      valued customer|
-      dear account holder|
-      dear sir|
-      dear madam
-    )\b/ix.test(text)
-  ) {
-    addSignal(
-      "Generic recipient greeting",
-      "info",
-      4
-    );
+  // 11. Gaming-related scam signal — weight 18
+  // Gaming terms alone should not make a message high risk; the signal is most useful
+  // when combined with payment, prize, urgency, link, credential, or account signals.
+  if (/\bbgmi\b|\bfree\s*fire\b|\bgaming\b|\btournament\b|\besports\b|\buc\b|\bdiamonds\b|game\s+account|gaming\s+account/i.test(text)) {
+    signals.push({ label: "Gaming-related scam pattern", icon: "alert", weight: 18 });
   }
 
-  /* -------------------------------------------------------------
-     12. ORGANIZATION / BRAND IMPERSONATION
-  ------------------------------------------------------------- */
+  // Check for legitimate transaction indicators
+  const legit = /completed successfully|transaction id|order confirmed|delivered|payment received/i.test(text);
 
-  const organizationWords =
-    /\b(
-      bank|
-      amazon|
-      flipkart|
-      paypal|
-      google|
-      microsoft|
-      apple|
-      instagram|
-      facebook|
-      whatsapp|
-      linkedin|
-      netflix|
-      uber|
-      swiggy|
-      zomato|
-      courier|
-      delivery|
-      government|
-      income tax|
-      police|
-      customer support|
-      security team|
-      hr department|
-      recruitment
-    )\b/ix;
-
-  const impersonationLanguage =
-    /\b(
-      security team|
-      support team|
-      verification team|
-      customer support|
-      official notification|
-      account security|
-      security department|
-      hr department|
-      recruitment team
-    )\b/ix;
-
-  if (
-    (organizationWords.test(text) ||
-      impersonationLanguage.test(text)) &&
-    /verify|verification|login|password|otp|payment|fee|click|account|security/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "Possible brand / organization impersonation",
-      "link",
-      15
-    );
+  // Calculate score
+  let score;
+  if (signals.length === 0 && legit) {
+    score = 6;
+  } else if (signals.length === 0) {
+    score = 24;
+  } else {
+    score = Math.min(98, signals.reduce((s, x) => s + x.weight, 0));
   }
 
-  /* -------------------------------------------------------------
-     13. LEGITIMATE TRANSACTION CONTEXT
-  ------------------------------------------------------------- */
-
-  const legitimateTransaction =
-    /\b(
-      payment completed successfully|
-      transaction completed|
-      transaction id|
-      order confirmed|
-      order delivered|
-      payment received|
-      successfully delivered|
-      subscription renewed|
-      invoice generated
-    )\b/ix.test(text);
-
-  /* -------------------------------------------------------------
-     HELPER
-  ------------------------------------------------------------- */
-
-  const has = (keyword) =>
-    signals.some((s) =>
-      s.label
-        .toLowerCase()
-        .includes(keyword)
-    );
-
-  /* -------------------------------------------------------------
-     14. BASE SCORE
-  ------------------------------------------------------------- */
-
-  let score = signals.reduce(
-    (total, signal) =>
-      total + signal.weight,
-    0
-  );
-
-  /* -------------------------------------------------------------
-     15. CONTEXT BOOSTS
-  ------------------------------------------------------------- */
-
-  /* Credential + urgency */
-
-  if (
-    has("credential") &&
-    has("urgency")
-  ) {
-    score += 12;
-  }
-
-  /* Credential + URL */
-
-  if (
-    has("credential") &&
-    has("url")
-  ) {
-    score += 12;
-  }
-
-  /* Financial + urgency */
-
-  if (
-    has("financial") &&
-    has("urgency")
-  ) {
-    score += 10;
-  }
-
-  /* Prize + financial */
-
-  if (
-    has("prize") &&
-    has("financial")
-  ) {
-    score += 12;
-  }
-
-  /* Verification + URL */
-
-  if (
-    has("verification") &&
-    has("url")
-  ) {
-    score += 10;
-  }
-
-  /* Threat + credential */
-
-  if (
-    has("threat") &&
-    has("credential")
-  ) {
-    score += 12;
-  }
-
-  /* Impersonation + URL */
-
-  if (
-    has("impersonation") &&
-    has("url")
-  ) {
-    score += 10;
-  }
-
-  /* -------------------------------------------------------------
-     16. LEGITIMATE MESSAGE ADJUSTMENT
-  ------------------------------------------------------------- */
-
-  if (
-    legitimateTransaction &&
-    signals.length <= 1 &&
-    !has("credential") &&
-    !has("threat")
-  ) {
-    score = Math.min(score, 15);
-  }
-
-  /* -------------------------------------------------------------
-     17. NO SIGNAL
-  ------------------------------------------------------------- */
-
-  if (signals.length === 0) {
-    score = legitimateTransaction
-      ? 5
-      : 20;
-  }
-
-  /* -------------------------------------------------------------
-     18. FINAL SCORE
-  ------------------------------------------------------------- */
-
-  score = Math.max(
-    0,
-    Math.min(
-      98,
-      Math.round(score)
-    )
-  );
-
-  /* -------------------------------------------------------------
-     19. LEVEL
-  ------------------------------------------------------------- */
-
+  // Determine level
   let level = "low";
+  if (score >= 70) level = "high";
+  else if (score >= 30) level = "medium";
 
-  if (score >= 70) {
-    level = "high";
-  } else if (score >= 35) {
-    level = "medium";
-  }
-
-  /* -------------------------------------------------------------
-     20. HEADLINE
-  ------------------------------------------------------------- */
-
+  // Dynamic headline
   let headline;
-
   if (level === "high") {
-    headline =
-      "Multiple high-risk phishing indicators detected.";
+    headline = "Multiple suspicious indicators detected.";
   } else if (level === "medium") {
-    headline =
-      "Some suspicious signals require verification.";
+    headline = "Some signals require manual verification.";
   } else {
-    headline =
-      "No major phishing indicators were detected.";
+    headline = "No major suspicious indicators were detected.";
   }
 
-  /* -------------------------------------------------------------
-     21. EXPLANATION
-  ------------------------------------------------------------- */
-
-  const hasCredential = has("credential");
-  const hasVerification = has("verification");
-  const hasThreat = has("threat");
-  const hasUrgency = has("urgency");
-  const hasFinancial = has("financial");
-  const hasPrize = has("prize");
-  const hasUrl = has("url");
-  const hasImpersonation = has("impersonation");
-  const hasDelivery =
-    has("delivery") ||
-    has("scam scenario");
-
+  // Dynamic explanation based on detected signals
   let explanation;
-
   if (signals.length === 0) {
-    explanation =
-      "No major phishing patterns were detected. However, automated analysis cannot guarantee that a message is legitimate.";
-  } else if (
-    hasCredential &&
-    hasUrl &&
-    (hasUrgency || hasThreat)
-  ) {
-    explanation =
-      "This message combines a credential request with a link and social-engineering pressure. These are strong indicators of a phishing attempt designed to steal sensitive information.";
-  } else if (
-    hasFinancial &&
-    hasPrize &&
-    hasUrgency
-  ) {
-    explanation =
-      "This message combines prize bait, an unexpected financial request, and urgency. This pattern is commonly associated with payment scams.";
-  } else if (
-    hasImpersonation &&
-    hasUrl &&
-    hasVerification
-  ) {
-    explanation =
-      "The message appears to imitate an organization and directs the recipient toward verification through a link. Verify the sender and use the organization's official app or website instead.";
-  } else if (
-    hasThreat &&
-    hasCredential
-  ) {
-    explanation =
-      "The message uses a threat or account consequence together with a request for sensitive credentials. This is a common social-engineering pattern used in phishing attacks.";
-  } else if (
-    hasFinancial &&
-    hasUrgency
-  ) {
-    explanation =
-      "The message combines a financial request with urgency. Do not transfer money until the request has been independently verified.";
-  } else if (
-    hasVerification &&
-    hasUrl
-  ) {
-    explanation =
-      "The message asks the recipient to complete verification through a link. This pattern can be used to redirect users to fraudulent login or credential-harvesting pages.";
-  } else if (
-    hasDelivery &&
-    hasUrl
-  ) {
-    explanation =
-      "The message references delivery, refunds, or another common scam scenario and includes a link. Verify the information through the official service instead of using the message link.";
-  } else if (hasUrl) {
-    explanation =
-      "An external link was detected. The link should be verified before opening, especially when the message also requests information, payment, or account action.";
+    explanation = "No suspicious patterns were detected in this message. It appears to be a routine notification.";
   } else {
-    explanation =
-      "Several suspicious indicators were detected. Verify the sender independently before clicking links, providing information, or making payments.";
+    const hasPayment = signals.some(s => s.label.includes("payment") || s.label.includes("financial"));
+    const hasCredential = signals.some(s => s.label.includes("credential"));
+    const hasVerification = signals.some(s => s.label.includes("verification") || s.label.includes("KYC"));
+    const hasThreats = signals.some(s => s.label.includes("blocking"));
+    const hasLink = signals.some(s => s.label.includes("URL") || s.label.includes("link"));
+    const hasImpersonation = signals.some(s => s.label.includes("impersonation"));
+    const hasUrgency = signals.some(s => s.label.includes("urgency"));
+    const hasDelivery = signals.some(s => s.label.includes("Delivery"));
+    const hasPrize = signals.some(s => s.label.includes("Prize"));
+    const hasGaming = signals.some(s => s.label.includes("Gaming"));
+
+    if (hasImpersonation && hasThreats && (hasVerification || hasCredential)) {
+      explanation = "This message impersonates a legitimate institution and uses account-blocking threats to pressure you into verifying credentials. This is a classic phishing and social engineering attack. Do not click links or provide any credentials.";
+    } else if (hasImpersonation && hasLink && hasVerification) {
+      explanation = "This message impersonates a known brand and directs you to a link to verify or complete KYC. The link and domain are likely fraudulent. Verify independently through official channels only.";
+    } else if (hasCredential && (hasImpersonation || hasThreats || hasUrgency)) {
+      explanation = "This message requests sensitive credentials (OTP, PIN, password, etc.) using social engineering tactics. Legitimate institutions never request credentials via message. This is a phishing attack.";
+    } else if (hasThreats && (hasUrgency || hasVerification)) {
+      explanation = "This message uses urgent language and account-blocking threats to manipulate you into taking immediate action, often requesting verification or credentials. This is a classic phishing and social engineering pattern.";
+    } else if (hasGaming && (hasPayment || hasPrize || hasUrgency || hasLink || hasCredential)) {
+      explanation = "This message combines gaming-related content with suspicious payment, reward, urgency, link, or credential signals. These patterns can be associated with gaming-related scams. Verify the sender, tournament, reward, or account request through the official channel before taking action.";
+    } else if (hasPayment && hasUrgency) {
+      explanation = "This message combines urgency with an unexpected payment or fee request. These patterns are commonly associated with financial scams. Verify independently.";
+    } else if (hasDelivery && hasLink) {
+      explanation = "This message references a delivery issue or refund and directs you to click a link. This is a common phishing pattern used to steal credentials or payment information.";
+    } else if (hasPrize && hasUrgency) {
+      explanation = "This message claims you've won a prize and uses urgency to manipulate you. Prize scams often lead to credential theft or payment fraud.";
+    } else if (hasLink && (hasImpersonation || hasVerification)) {
+      explanation = "This message contains suspicious links, possibly impersonating a brand or requesting verification. Do not click links from untrusted sources.";
+    } else if (hasLink) {
+      explanation = "This message contains suspicious links that could lead to phishing or malware. Avoid clicking links and verify the sender through official channels.";
+    } else {
+      explanation = "This message contains multiple suspicious indicators. Avoid clicking links, providing credentials, or making payments until you verify the sender through official channels.";
+    }
   }
 
-  /* -------------------------------------------------------------
-     22. RECOMMENDATION
-  ------------------------------------------------------------- */
-
+  // Dynamic recommendation
   let recommendation;
-
-  if (
-    hasCredential ||
-    hasThreat
-  ) {
-    recommendation =
-      "Do NOT provide passwords, OTPs, PINs, CVVs, or other sensitive information. Verify the request using the organization's official website or app.";
-  } else if (hasUrl) {
-    recommendation =
-      "Do NOT open the message link until it has been verified. Navigate to the official website or app directly.";
-  } else if (hasFinancial) {
-    recommendation =
-      "Do NOT make the requested payment or transfer until you independently verify the request.";
+  if (signals.length === 0) {
+    recommendation = "No action needed — no major risk signals were found.";
   } else {
-    recommendation =
-      "Verify the sender independently before taking any action.";
-  }
+    const hasCredential = signals.some(s => s.label.includes("credential"));
+    const hasLink = signals.some(s => s.label.includes("URL") || s.label.includes("link"));
+    const hasPayment = signals.some(s => s.label.includes("payment") || s.label.includes("financial"));
+    const hasThreats = signals.some(s => s.label.includes("blocking"));
 
-  /* -------------------------------------------------------------
-     23. RETURN RESULT
-  ------------------------------------------------------------- */
+    if (hasGaming && (hasPayment || hasPrize || hasUrgency || hasLink || hasCredential)) {
+      recommendation = "Do not pay verification or reward fees. Verify the tournament, reward, sender, or account request through its official channel.";
+    } else if (hasCredential || hasThreats) {
+      recommendation = "Do NOT provide credentials, OTP, PIN, passwords, or sensitive information. Contact the institution directly using official contact information from their website.";
+    } else if (hasLink) {
+      recommendation = "Do NOT click links in this message. Visit the official website or app directly using a fresh URL or call the institution's official support number.";
+    } else if (hasPayment) {
+      recommendation = "Do NOT make any payment or transfer funds. Verify the request independently through official channels before proceeding.";
+    } else {
+      recommendation = "Verify the sender independently using official contact information. Do not click links or provide sensitive information.";
+    }
+  }
 
   return {
     id: "custom",
@@ -885,147 +291,60 @@ function analyzeCustomText(raw) {
     level,
     score,
     headline,
-    reasons: signals
-      .sort(
-        (a, b) =>
-          b.weight - a.weight
-      )
-      .slice(0, 6)
-      .map((s) => ({
-        label: s.label,
-        icon: s.icon,
-      })),
+    reasons: signals.map((s) => ({ label: s.label, icon: s.icon })),
     recommendation,
     explanation,
   };
 }
 
-/* ---------------------------------------------------------------------
-LENS MARK
---------------------------------------------------------------------- */
+/* ------------------------------- UI atoms ------------------------------ */
 
-function LensMark({
-  size = 28,
-  spinning = false,
-  accent = "var(--brand)",
-}) {
+function LensMark({ size = 28, spinning = false, accent = "var(--brand)" }) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 48 48"
       fill="none"
-      className={
-        spinning
-          ? "sl-spin-slow"
-          : ""
-      }
+      className={spinning ? "sl-spin-slow" : ""}
     >
-      <circle
-        cx="24"
-        cy="24"
-        r="21"
-        stroke={accent}
-        strokeOpacity="0.25"
-        strokeWidth="2"
-      />
-
-      <circle
-        cx="24"
-        cy="24"
-        r="14.5"
-        stroke={accent}
-        strokeOpacity="0.55"
-        strokeWidth="2"
-      />
-
-      <circle
-        cx="24"
-        cy="24"
-        r="8"
-        fill={accent}
-        fillOpacity="0.16"
-        stroke={accent}
-        strokeWidth="2"
-      />
-
-      <circle
-        cx="24"
-        cy="24"
-        r="2.4"
-        fill={accent}
-      />
+      <circle cx="24" cy="24" r="21" stroke={accent} strokeOpacity="0.25" strokeWidth="2" />
+      <circle cx="24" cy="24" r="14.5" stroke={accent} strokeOpacity="0.55" strokeWidth="2" />
+      <circle cx="24" cy="24" r="8" fill={accent} fillOpacity="0.16" stroke={accent} strokeWidth="2" />
+      <circle cx="24" cy="24" r="2.4" fill={accent} />
     </svg>
   );
 }
 
-/* ---------------------------------------------------------------------
-STATUS BAR
---------------------------------------------------------------------- */
-
 function StatusBar() {
   return (
     <div className="sl-statusbar">
-      <span className="sl-statustime">
-        9:41
-      </span>
-
+      <span className="sl-statustime">9:41</span>
       <div className="sl-statusicons">
-        <Signal
-          size={13}
-          strokeWidth={2.4}
-        />
-
-        <Wifi
-          size={13}
-          strokeWidth={2.4}
-        />
-
-        <BatteryFull
-          size={15}
-          strokeWidth={2.2}
-        />
+        <Signal size={13} strokeWidth={2.4} />
+        <Wifi size={13} strokeWidth={2.4} />
+        <BatteryFull size={15} strokeWidth={2.2} />
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-TOP BAR
---------------------------------------------------------------------- */
-
-function TopBar({
-  title,
-  onBack,
-  onHow,
-}) {
+function TopBar({ title, onBack, onHow }) {
   return (
     <div className="sl-topbar">
       <button
         className="sl-iconbtn"
         onClick={onBack}
-        style={{
-          visibility: onBack
-            ? "visible"
-            : "hidden",
-        }}
+        style={{ visibility: onBack ? "visible" : "hidden" }}
         aria-label="Back"
       >
         <ChevronLeft size={19} />
       </button>
-
-      <span className="sl-topbar-title">
-        {title}
-      </span>
-
+      <span className="sl-topbar-title">{title}</span>
       <button
         className="sl-iconbtn"
         onClick={onHow}
-        style={{
-          visibility: onHow
-            ? "visible"
-            : "hidden",
-        }}
+        style={{ visibility: onHow ? "visible" : "hidden" }}
         aria-label="How it works"
       >
         <Layers size={17} />
@@ -1034,300 +353,158 @@ function TopBar({
   );
 }
 
-/* ---------------------------------------------------------------------
-HOME SCREEN
---------------------------------------------------------------------- */
+/* ------------------------------- Screens ------------------------------- */
 
-function HomeScreen({
-  goInput,
-  goDemo,
-  goHow,
-}) {
+function HomeScreen({ goInput, goDemo, goHow }) {
   return (
     <div className="sl-screen sl-home">
       <div className="sl-home-top">
-        <button
-          className="sl-iconbtn"
-          onClick={goHow}
-          aria-label="How it works"
-        >
+        <button className="sl-iconbtn" onClick={goHow} aria-label="How it works">
           <Layers size={17} />
         </button>
       </div>
 
       <div className="sl-home-hero">
-        <LensMark
-          size={64}
-          accent="var(--brand)"
-        />
-
+        <LensMark size={64} accent="var(--brand)" />
         <h1 className="sl-wordmark">
-          Scam
-          <span
-            style={{
-              color: "var(--brand)",
-            }}
-          >
-            Lens
-          </span>
+          Scam<span style={{ color: "var(--brand)" }}>Lens</span>
         </h1>
+        <p className="sl-tagline">"Check before you pay."</p>
+        <p className="sl-home-desc">Analyze suspicious messages before you act.</p>
+        <p className="sl-home-secondary">Built for mobile-first protection, with gaming and power-user scenarios in mind.</p>
+      </div>
 
-        <p className="sl-tagline">
-          "Check before you act."
-        </p>
-
-        <p className="sl-home-desc">
-          Analyze suspicious messages before
-          you click, pay, or share sensitive
-          information.
-        </p>
+      <div className="sl-gaming-card">
+        <div className="sl-gaming-card-icon"><PlayCircle size={17} /></div>
+        <div>
+          <div className="sl-gaming-card-title">Gaming Protection</div>
+          <div className="sl-gaming-card-text">Detect fake tournament fees, gaming rewards, account scams and suspicious payment links.</div>
+        </div>
       </div>
 
       <div className="sl-home-actions">
-        <button
-          className="sl-btn sl-btn-primary"
-          onClick={goInput}
-        >
+        <button className="sl-btn sl-btn-primary" onClick={goInput}>
           Check a message
           <ArrowRight size={18} />
         </button>
-
-        <button
-          className="sl-btn sl-btn-ghost"
-          onClick={goDemo}
-        >
+        <button className="sl-btn sl-btn-ghost" onClick={goDemo}>
           <PlayCircle size={17} />
           Try demo
         </button>
       </div>
 
       <div className="sl-home-footer">
-        <span>
-          Prototype · iQOO Hackathon 2026
-        </span>
-
-        <span className="sl-dot">
-          ·
-        </span>
-
-        <span>
-          FinTech &amp; Commerce
-        </span>
+        <span>Prototype · iQOO Hackathon 2026</span>
+        <span className="sl-dot">·</span>
+        <span>FinTech &amp; Commerce</span>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-DEMO PICKER
---------------------------------------------------------------------- */
-
-function DemoPickerScreen({
-  pick,
-  goBack,
-}) {
+function DemoPickerScreen({ pick, goBack }) {
   const tiles = [
-    {
-      c: CASES.high,
-      hue: "danger",
-      desc:
-        "Prize bait + urgent processing fee",
-    },
-    {
-      c: CASES.medium,
-      hue: "warn",
-      desc:
-        "Refund pending manual verification",
-    },
-    {
-      c: CASES.low,
-      hue: "safe",
-      desc:
-        "Confirmed store payment receipt",
-    },
+    { c: CASES.high, hue: "danger", desc: "Prize bait + urgent processing fee" },
+    { c: CASES.gaming, hue: "danger", desc: "Gaming reward + verification fee" },
+    { c: CASES.medium, hue: "warn", desc: "Refund pending manual verification" },
+    { c: CASES.low, hue: "safe", desc: "Confirmed store payment receipt" },
   ];
-
   return (
     <div className="sl-screen">
-      <TopBar
-        title="Try demo"
-        onBack={goBack}
-      />
-
+      <TopBar title="Try demo" onBack={goBack} />
       <div className="sl-screen-body">
         <p className="sl-section-lead">
-          Pick a scenario — ScamLens runs
-          the full capture-to-action flow
-          instantly, no waiting on external
-          services.
+          Pick a scenario — ScamLens runs the full capture-to-action flow instantly, no waiting on
+          external services.
         </p>
-
         <div className="sl-demo-list">
-          {tiles.map(
-            ({
-              c,
-              hue,
-              desc,
-            }) => (
-              <button
-                key={c.id}
-                className={`sl-demo-tile sl-tone-${hue}`}
-                onClick={() =>
-                  pick(c)
-                }
-              >
-                <div className="sl-demo-tile-top">
-                  <span className="sl-demo-tile-tag">
-                    {c.tag}
-                  </span>
-
-                  <ArrowRight size={16} />
-                </div>
-
-                <p className="sl-demo-tile-msg">
-                  "{c.message}"
-                </p>
-
-                <p className="sl-demo-tile-desc">
-                  {desc}
-                </p>
-              </button>
-            )
-          )}
+          {tiles.map(({ c, hue, desc }) => (
+            <button key={c.id} className={`sl-demo-tile sl-tone-${hue}`} onClick={() => pick(c)}>
+              <div className="sl-demo-tile-top">
+                <span className="sl-demo-tile-tag">{c.tag}</span>
+                <ArrowRight size={16} />
+              </div>
+              <p className="sl-demo-tile-msg">"{c.message}"</p>
+              <p className="sl-demo-tile-desc">{desc}</p>
+            </button>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-INPUT SCREEN
---------------------------------------------------------------------- */
-
-function InputScreen({
-  goBack,
-  goHow,
-  runAnalysis,
-}) {
-  const [text, setText] =
-    useState("");
-
-  const [scanning, setScanning] =
-    useState(false);
-
+function InputScreen({ goBack, goHow, runAnalysis }) {
+  const [text, setText] = useState("");
+  const [scanning, setScanning] = useState(false);
   const fileRef = useRef(null);
 
   const examples = [
-    {
-      c: CASES.high,
-      hue: "danger",
-    },
-    {
-      c: CASES.medium,
-      hue: "warn",
-    },
-    {
-      c: CASES.low,
-      hue: "safe",
-    },
+    { c: CASES.high, hue: "danger" },
+    { c: CASES.gaming, hue: "danger" },
+    { c: CASES.medium, hue: "warn" },
+    { c: CASES.low, hue: "safe" },
   ];
 
   const simulateUpload = () => {
     setScanning(true);
-
     setTimeout(() => {
-      setText(
-        CASES.high.message
-      );
-
+      setText(CASES.high.message);
       setScanning(false);
     }, 900);
   };
 
   return (
     <div className="sl-screen">
-      <TopBar
-        title="Scan suspicious content"
-        onBack={goBack}
-        onHow={goHow}
-      />
-
+      <TopBar title="Scan suspicious content" onBack={goBack} onHow={goHow} />
       <div className="sl-screen-body">
         <div className="sl-capture-row">
-          <button
-            className="sl-capture-btn"
-            onClick={simulateUpload}
-          >
+          <button className="sl-capture-btn" onClick={simulateUpload}>
             <Upload size={17} />
             Upload screenshot
           </button>
-
           <div className="sl-capture-btn sl-capture-btn-active">
             <ClipboardPaste size={17} />
             Paste message
           </div>
-
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="sl-hidden-input"
-          />
+          <input ref={fileRef} type="file" accept="image/*" className="sl-hidden-input" />
         </div>
 
         {scanning && (
           <div className="sl-inline-scan">
             <span className="sl-inline-scan-dot" />
-
-            Simulating screenshot scan
-            (prototype demo)…
+            Simulating screenshot scan (prototype demo)…
           </div>
         )}
 
         <textarea
           className="sl-textarea"
-          placeholder="Paste a suspicious message, email, or SMS here…"
+          placeholder="Paste a payment-related message here…"
           value={text}
-          onChange={(e) =>
-            setText(e.target.value)
-          }
+          onChange={(e) => setText(e.target.value)}
           rows={4}
         />
 
-        <p
-          className="sl-section-lead"
-          style={{
-            marginTop: 22,
-          }}
-        >
+        <p className="sl-section-lead" style={{ marginTop: 22 }}>
           Or try a ready-made example
         </p>
-
         <div className="sl-example-row">
-          {examples.map(
-            ({ c, hue }) => (
-              <button
-                key={c.id}
-                className={`sl-example-chip sl-tone-${hue}`}
-                onClick={() =>
-                  setText(c.message)
-                }
-              >
-                {c.tag}
-              </button>
-            )
-          )}
+          {examples.map(({ c, hue }) => (
+            <button
+              key={c.id}
+              className={`sl-example-chip sl-tone-${hue}`}
+              onClick={() => setText(c.message)}
+            >
+              {c.tag}
+            </button>
+          ))}
         </div>
 
         <button
           className="sl-btn sl-btn-primary sl-btn-block"
           disabled={!text.trim()}
-          onClick={() =>
-            runAnalysis(text)
-          }
-          style={{
-            marginTop: 26,
-          }}
+          onClick={() => runAnalysis(text)}
+          style={{ marginTop: 26 }}
         >
           Analyze message
           <ArrowRight size={18} />
@@ -1337,65 +514,28 @@ function InputScreen({
   );
 }
 
-/* ---------------------------------------------------------------------
-ANALYZING SCREEN
---------------------------------------------------------------------- */
-
-function AnalyzingScreen({
-  onDone,
-}) {
+function AnalyzingScreen({ onDone }) {
   const steps = [
-    "Checking phishing signals…",
-    "Checking urgency & social engineering…",
-    "Checking suspicious links & requests…",
+    "Checking payment signals…",
+    "Checking urgency…",
+    "Checking suspicious patterns…",
     "Preparing risk assessment…",
   ];
-
-  const [activeIdx, setActiveIdx] =
-    useState(-1);
+  const [activeIdx, setActiveIdx] = useState(-1);
 
   useEffect(() => {
     let i = -1;
-
-    const timers = [];
-
     const tick = () => {
       i += 1;
-
       setActiveIdx(i);
-
-      if (
-        i <
-        steps.length - 1
-      ) {
-        timers.push(
-          setTimeout(
-            tick,
-            380
-          )
-        );
+      if (i < steps.length - 1) {
+        timers.push(setTimeout(tick, 380));
       } else {
-        timers.push(
-          setTimeout(
-            onDone,
-            520
-          )
-        );
+        timers.push(setTimeout(onDone, 520));
       }
     };
-
-    timers.push(
-      setTimeout(
-        tick,
-        260
-      )
-    );
-
-    return () =>
-      timers.forEach(
-        clearTimeout
-      );
-
+    const timers = [setTimeout(tick, 260)];
+    return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1404,190 +544,67 @@ function AnalyzingScreen({
       <div className="sl-scan-ring-wrap">
         <div className="sl-scan-ring-outer sl-spin-slow" />
         <div className="sl-scan-ring-mid sl-spin-rev" />
-
-        <LensMark
-          size={40}
-          accent="var(--brand)"
-        />
+        <LensMark size={40} accent="var(--brand)" />
       </div>
-
-      <h2 className="sl-analyzing-title">
-        Analyzing message…
-      </h2>
-
+      <h2 className="sl-analyzing-title">Analyzing message…</h2>
       <div className="sl-checklist">
-        {steps.map(
-          (s, idx) => {
-            const state =
-              idx < activeIdx
-                ? "done"
-                : idx === activeIdx
-                ? "active"
-                : "pending";
-
-            return (
-              <div
-                key={s}
-                className={`sl-check-row sl-check-${state}`}
-              >
-                <span className="sl-check-icon">
-                  {state ===
-                  "done" ? (
-                    <CheckCircle2
-                      size={16}
-                    />
-                  ) : state ===
-                    "active" ? (
-                    <span className="sl-check-spinner" />
-                  ) : (
-                    <span className="sl-check-empty" />
-                  )}
-                </span>
-
-                {s}
-              </div>
-            );
-          }
-        )}
+        {steps.map((s, idx) => {
+          const state = idx < activeIdx ? "done" : idx === activeIdx ? "active" : "pending";
+          return (
+            <div key={s} className={`sl-check-row sl-check-${state}`}>
+              <span className="sl-check-icon">
+                {state === "done" ? (
+                  <CheckCircle2 size={16} />
+                ) : state === "active" ? (
+                  <span className="sl-check-spinner" />
+                ) : (
+                  <span className="sl-check-empty" />
+                )}
+              </span>
+              {s}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-COUNT UP
---------------------------------------------------------------------- */
-
-function useCountUp(
-  target,
-  active,
-  duration = 1100
-) {
-  const [val, setVal] =
-    useState(0);
-
-  const rafRef =
-    useRef();
-
+function useCountUp(target, active, duration = 1100) {
+  const [val, setVal] = useState(0);
+  const rafRef = useRef();
   useEffect(() => {
     if (!active) return;
-
-    const start =
-      performance.now();
-
+    const start = performance.now();
     const from = 0;
-
-    const ease = (t) =>
-      1 -
-      Math.pow(
-        1 - t,
-        3
-      );
-
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
     const step = (now) => {
-      const p = Math.min(
-        1,
-        (now - start) /
-          duration
-      );
-
-      setVal(
-        Math.round(
-          from +
-            (target - from) *
-              ease(p)
-        )
-      );
-
-      if (p < 1) {
-        rafRef.current =
-          requestAnimationFrame(
-            step
-          );
-      }
+      const p = Math.min(1, (now - start) / duration);
+      setVal(Math.round(from + (target - from) * ease(p)));
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
     };
-
-    rafRef.current =
-      requestAnimationFrame(
-        step
-      );
-
-    return () =>
-      cancelAnimationFrame(
-        rafRef.current
-      );
-  }, [
-    target,
-    active,
-    duration,
-  ]);
-
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, active, duration]);
   return val;
 }
 
-/* ---------------------------------------------------------------------
-RISK GAUGE
---------------------------------------------------------------------- */
-
-function RiskGauge({
-  score,
-  level,
-}) {
-  const [mounted, setMounted] =
-    useState(false);
-
+function RiskGauge({ score, level }) {
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    const t =
-      setTimeout(
-        () =>
-          setMounted(true),
-        60
-      );
-
-    return () =>
-      clearTimeout(t);
+    const t = setTimeout(() => setMounted(true), 60);
+    return () => clearTimeout(t);
   }, []);
-
-  const count =
-    useCountUp(
-      score,
-      mounted,
-      1100
-    );
-
+  const count = useCountUp(score, mounted, 1100);
   const r = 66;
-
-  const circ =
-    2 *
-    Math.PI *
-    r;
-
-  const offset =
-    circ -
-    (Math.min(
-      score,
-      100
-    ) /
-      100) *
-      circ;
-
-  const accent =
-    ACCENT[level].ring;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(score, 100) / 100) * circ;
+  const accent = ACCENT[level].ring;
 
   return (
     <div className="sl-gauge-wrap">
-      <svg
-        width="168"
-        height="168"
-        viewBox="0 0 168 168"
-      >
-        <circle
-          cx="84"
-          cy="84"
-          r={r}
-          className="sl-gauge-track"
-        />
-
+      <svg width="168" height="168" viewBox="0 0 168 168">
+        <circle cx="84" cy="84" r={r} className="sl-gauge-track" />
         <circle
           cx="84"
           cy="84"
@@ -1598,211 +615,88 @@ function RiskGauge({
           fill="none"
           transform="rotate(-90 84 84)"
           style={{
-            strokeDasharray:
-              circ,
-
-            strokeDashoffset:
-              mounted
-                ? offset
-                : circ,
-
-            transition:
-              "stroke-dashoffset 1.1s cubic-bezier(.22,.9,.3,1)",
-
+            strokeDasharray: circ,
+            strokeDashoffset: mounted ? offset : circ,
+            transition: "stroke-dashoffset 1.1s cubic-bezier(.22,.9,.3,1)",
             filter: `drop-shadow(0 0 10px ${accent}66)`,
           }}
         />
       </svg>
-
       <div className="sl-gauge-center">
-        <span
-          className="sl-gauge-score"
-          style={{
-            color: accent,
-          }}
-        >
+        <span className="sl-gauge-score" style={{ color: accent }}>
           {count}
         </span>
-
-        <span className="sl-gauge-max">
-          / 100
-        </span>
-
-        <span className="sl-gauge-label">
-          Risk Score
-        </span>
+        <span className="sl-gauge-max">/ 100</span>
+        <span className="sl-gauge-label">Risk Score</span>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-RESULT SCREEN
---------------------------------------------------------------------- */
-
-function ResultScreen({
-  result,
-  goCheckAnother,
-  goBack,
-  goHow,
-}) {
-  const meta =
-    levelMeta(
-      result.level
-    );
-
-  const accent =
-    ACCENT[result.level];
-
-  const [
-    showReasons,
-    setShowReasons,
-  ] = useState(false);
+function ResultScreen({ result, goCheckAnother, goBack, goHow }) {
+  const meta = levelMeta(result.level);
+  const accent = ACCENT[result.level];
+  const [showReasons, setShowReasons] = useState(false);
 
   useEffect(() => {
     setShowReasons(false);
-
-    const t =
-      setTimeout(
-        () =>
-          setShowReasons(true),
-        550
-      );
-
-    return () =>
-      clearTimeout(t);
+    const t = setTimeout(() => setShowReasons(true), 550);
+    return () => clearTimeout(t);
   }, [result]);
 
   return (
     <div className="sl-screen">
-      <TopBar
-        title="Risk analysis"
-        onBack={goBack}
-        onHow={goHow}
-      />
-
+      <TopBar title="Risk analysis" onBack={goBack} onHow={goHow} />
       <div className="sl-screen-body sl-result-body">
         <div
           className="sl-verdict-banner"
-          style={{
-            background:
-              accent.soft,
-
-            color:
-              accent.fg,
-
-            borderColor:
-              `${accent.fg}33`,
-          }}
+          style={{ background: accent.soft, color: accent.fg, borderColor: `${accent.fg}33` }}
         >
-          {meta.dot}{" "}
-          {meta.label}
+          {meta.dot} {meta.label}
         </div>
 
-        <RiskGauge
-          score={result.score}
-          level={result.level}
-        />
+        <RiskGauge score={result.score} level={result.level} />
 
-        <p className="sl-result-headline">
-          {result.headline}
-        </p>
+        <p className="sl-result-headline">{result.headline}</p>
 
-        {result.reasons.length >
-          0 && (
+        {result.reasons.length > 0 && (
           <div className="sl-reasons-block">
-            <span className="sl-reasons-title">
-              WHY?
-            </span>
-
+            <span className="sl-reasons-title">WHY?</span>
             <div className="sl-reasons-list">
-              {result.reasons.map(
-                (
-                  r,
-                  idx
-                ) => {
-                  const Icon =
-                    ICONS[
-                      r.icon
-                    ] ||
-                    AlertTriangle;
-
-                  return (
-                    <div
-                      key={
-                        r.label
-                      }
-                      className={`sl-reason-row ${
-                        showReasons
-                          ? "sl-reason-in"
-                          : ""
-                      }`}
-                      style={{
-                        transitionDelay: `${
-                          idx *
-                          90
-                        }ms`,
-                      }}
-                    >
-                      <span
-                        className="sl-reason-icon"
-                        style={{
-                          color:
-                            accent.fg,
-
-                          background:
-                            accent.soft,
-                        }}
-                      >
-                        <Icon
-                          size={14}
-                        />
-                      </span>
-
-                      {r.label}
-                    </div>
-                  );
-                }
-              )}
+              {result.reasons.map((r, idx) => {
+                const Icon = ICONS[r.icon] || AlertTriangle;
+                return (
+                  <div
+                    key={r.label}
+                    className={`sl-reason-row ${showReasons ? "sl-reason-in" : ""}`}
+                    style={{ transitionDelay: `${idx * 90}ms` }}
+                  >
+                    <span className="sl-reason-icon" style={{ color: accent.fg, background: accent.soft }}>
+                      <Icon size={14} />
+                    </span>
+                    {r.label}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
         <div className="sl-ai-block">
           <div className="sl-ai-block-head">
-            <Sparkles
-              size={14}
-            />
-
-            Risk explanation —
-            Prototype engine
+            <Sparkles size={14} />
+            ScamLens Intelligence — Explainable Analysis
           </div>
-
-          <p className="sl-ai-block-text">
-            {result.explanation}
-          </p>
+          <p className="sl-ai-block-text">{result.explanation}</p>
         </div>
 
         <div className="sl-action-block">
-          <span className="sl-action-title">
-            RECOMMENDED ACTION
-          </span>
-
-          <p className="sl-action-text">
-            {result.recommendation}
-          </p>
+          <span className="sl-action-title">RECOMMENDED ACTION</span>
+          <p className="sl-action-text">{result.recommendation}</p>
         </div>
 
-        <button
-          className="sl-btn sl-btn-primary sl-btn-block"
-          onClick={
-            goCheckAnother
-          }
-        >
-          <RefreshCw
-            size={16}
-          />
-
+        <button className="sl-btn sl-btn-primary sl-btn-block" onClick={goCheckAnother}>
+          <RefreshCw size={16} />
           Check another
         </button>
       </div>
@@ -1810,1677 +704,248 @@ function ResultScreen({
   );
 }
 
-/* ---------------------------------------------------------------------
-HOW IT WORKS
---------------------------------------------------------------------- */
-
-function HowScreen({
-  goBack,
-}) {
+function HowScreen({ goBack }) {
   const flow = [
-    {
-      t: "User screenshot / message",
-      d: "Suspicious SMS, email, or message is captured on-device",
-    },
-
-    {
-      t: "Text extraction",
-      d: "Prototype simulates OCR; pasted text is processed directly",
-    },
-
-    {
-      t: "Phishing signal engine",
-      d: "Checks urgency, credentials, payments, links, impersonation, threats, rewards, and scam patterns",
-    },
-
-    {
-      t: "Risk scoring",
-      d: "Multiple signals are combined into a dynamic 0–100 risk score",
-    },
-
-    {
-      t: "Explanation",
-      d: "ScamLens explains which signals contributed to the risk assessment",
-    },
-
-    {
-      t: "Recommended action",
-      d: "The user receives one clear next step before clicking, paying, or sharing information",
-    },
+    { t: "Capture", d: "Screenshot or message text is provided to ScamLens" },
+    { t: "Extract", d: "Text is prepared for deterministic analysis" },
+    { t: "Lightweight signal engine", d: "Heuristic checks identify payment, urgency, prize, credential, URL, impersonation, gaming and other suspicious patterns" },
+    { t: "Explainable risk assessment", d: "Detected signals are converted into a transparent risk assessment" },
+    { t: "0–100 risk score", d: "A deterministic score maps to low, medium, or high risk" },
+    { t: "Recommended action", d: "One concrete next step helps the user decide safely" },
+    { t: "Future: AI + on-device intelligence", d: "Production versions can use AI-assisted analysis and supported on-device models for lower latency and improved privacy" },
   ];
-
   return (
     <div className="sl-screen">
-      <TopBar
-        title="How it works"
-        onBack={goBack}
-      />
-
+      <TopBar title="How it works" onBack={goBack} />
       <div className="sl-screen-body">
-        <p className="sl-section-lead">
-          Six lightweight steps to identify
-          phishing and scam signals before
-          you act.
-        </p>
-
+        <p className="sl-section-lead">Lightweight, explainable analysis — no bank integration or server-side ML in the current MVP.</p>
         <div className="sl-flow">
-          {flow.map(
-            (f, idx) => (
-              <div
-                className="sl-flow-row"
-                key={f.t}
-              >
-                <div className="sl-flow-num">
-                  {String(
-                    idx + 1
-                  ).padStart(
-                    2,
-                    "0"
-                  )}
-                </div>
-
-                <div className="sl-flow-line" />
-
-                <div>
-                  <div className="sl-flow-title">
-                    {f.t}
-                  </div>
-
-                  <div className="sl-flow-desc">
-                    {f.d}
-                  </div>
-                </div>
+          {flow.map((f, idx) => (
+            <div className="sl-flow-row" key={f.t}>
+              <div className="sl-flow-num">{String(idx + 1).padStart(2, "0")}</div>
+              <div className="sl-flow-line" />
+              <div>
+                <div className="sl-flow-title">{f.t}</div>
+                <div className="sl-flow-desc">{f.d}</div>
               </div>
-            )
-          )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------------
-ROOT APP
---------------------------------------------------------------------- */
+/* -------------------------------- Root ---------------------------------- */
 
 export default function App() {
-  const [
-    screen,
-    setScreen,
-  ] = useState("home");
+  const [screen, setScreen] = useState("home");
+  const [pendingCase, setPendingCase] = useState(null);
+  const [result, setResult] = useState(null);
 
-  const [
-    pendingCase,
-    setPendingCase,
-  ] = useState(null);
+  const startAnalysis = useCallback((source) => {
+    const caseObj = typeof source === "string" ? analyzeCustomText(source) : source;
+    setPendingCase(caseObj);
+    setScreen("analyzing");
+  }, []);
 
-  const [
-    result,
-    setResult,
-  ] = useState(null);
-
-  /* -------------------------------------------------------------
-     START ANALYSIS
-  ------------------------------------------------------------- */
-
-  const startAnalysis =
-    useCallback(
-      (source) => {
-        const caseObj =
-          typeof source ===
-          "string"
-            ? analyzeCustomText(
-                source
-              )
-            : source;
-
-        setPendingCase(
-          caseObj
-        );
-
-        setScreen(
-          "analyzing"
-        );
-      },
-      []
-    );
-
-  /* -------------------------------------------------------------
-     FINISH ANALYSIS
-  ------------------------------------------------------------- */
-
-  const finishAnalysis =
-    useCallback(() => {
-      setResult(
-        pendingCase
-      );
-
-      setScreen(
-        "result"
-      );
-    }, [pendingCase]);
+  const finishAnalysis = useCallback(() => {
+    setResult(pendingCase);
+    setScreen("result");
+  }, [pendingCase]);
 
   return (
     <div className="sl-app-bg">
       <style>{`
-
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
 
         .sl-app-bg {
-          --ink:#090D16;
-          --surface:#111A2C;
-          --surface-2:#16213A;
-          --border:rgba(255,255,255,0.08);
-
-          --text-1:#EEF2FA;
-          --text-2:#93A0BC;
-          --text-3:#5B6584;
-
-          --brand:#5B8CFF;
-          --brand-soft:rgba(91,140,255,0.14);
-
-          --safe:#2FD9A6;
-          --safe-soft:rgba(47,217,166,0.14);
-
-          --warn:#F5B833;
-          --warn-soft:rgba(245,184,51,0.14);
-
-          --danger:#FF5D6C;
-          --danger-soft:rgba(255,93,108,0.14);
-
-          font-family:'Inter',sans-serif;
-
-          min-height:680px;
-          width:100%;
-
-          display:flex;
-          align-items:center;
-          justify-content:center;
-
-          padding:28px 12px;
-
+          --ink:#090D16; --surface:#111A2C; --surface-2:#16213A; --border:rgba(255,255,255,0.08);
+          --text-1:#EEF2FA; --text-2:#93A0BC; --text-3:#5B6584;
+          --brand:#5B8CFF; --brand-soft:rgba(91,140,255,0.14);
+          --safe:#2FD9A6; --safe-soft:rgba(47,217,166,0.14);
+          --warn:#F5B833; --warn-soft:rgba(245,184,51,0.14);
+          --danger:#FF5D6C; --danger-soft:rgba(255,93,108,0.14);
+          font-family: 'Inter', sans-serif;
+          min-height: 680px;
+          width: 100%;
+          display:flex; align-items:center; justify-content:center;
+          padding: 28px 12px;
           background:
-            radial-gradient(
-              circle at 18% 8%,
-              rgba(91,140,255,0.16),
-              transparent 42%
-            ),
-
-            radial-gradient(
-              circle at 84% 92%,
-              rgba(47,217,166,0.10),
-              transparent 45%
-            ),
-
+            radial-gradient(circle at 18% 8%, rgba(91,140,255,0.16), transparent 42%),
+            radial-gradient(circle at 84% 92%, rgba(47,217,166,0.10), transparent 45%),
             var(--ink);
-
-          box-sizing:border-box;
+          box-sizing: border-box;
         }
-
-        .sl-app-bg * {
-          box-sizing:border-box;
-        }
+        .sl-app-bg * { box-sizing: border-box; }
 
         .sl-phone {
-          width:100%;
-          max-width:380px;
-
-          height:780px;
-          max-height:92vh;
-
-          background:
-            linear-gradient(
-              180deg,
-              var(--surface) 0%,
-              var(--ink) 100%
-            );
-
-          border-radius:40px;
-
-          border:1px solid var(--border);
-
-          box-shadow:
-            0 40px 90px -30px rgba(0,0,0,0.7),
-            0 0 0 8px rgba(255,255,255,0.02);
-
-          overflow:hidden;
-          position:relative;
-
-          display:flex;
-          flex-direction:column;
-        }
-
-        /* ---------------------------------------------------------
-           STATUS BAR
-        --------------------------------------------------------- */
-
-        .sl-statusbar {
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-
-          padding:
-            14px
-            26px
-            4px;
-
-          color:var(--text-1);
-
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          font-size:12px;
-        }
-
-        .sl-statusicons {
-          display:flex;
-          align-items:center;
-          gap:6px;
-
-          color:var(--text-1);
-        }
-
-        /* ---------------------------------------------------------
-           TOP BAR
-        --------------------------------------------------------- */
-
-        .sl-topbar {
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-
-          padding:
-            6px
-            10px
-            2px;
-        }
-
-        .sl-topbar-title {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:600;
-          font-size:14.5px;
-
-          color:var(--text-1);
-
-          letter-spacing:0.2px;
-        }
-
-        .sl-iconbtn {
-          width:34px;
-          height:34px;
-
-          border-radius:11px;
-
-          display:flex;
-          align-items:center;
-          justify-content:center;
-
-          background:
-            var(--surface-2);
-
-          border:
-            1px solid
-            var(--border);
-
-          color:var(--text-1);
-
-          cursor:pointer;
-
-          transition:
-            background .15s ease,
-            transform .15s ease;
-        }
-
-        .sl-iconbtn:hover {
-          background:
-            rgba(255,255,255,0.09);
-
-          transform:
-            translateY(-1px);
-        }
-
-        /* ---------------------------------------------------------
-           SCREEN
-        --------------------------------------------------------- */
-
-        .sl-screen {
-          flex:1;
-
-          display:flex;
-          flex-direction:column;
-
-          overflow-y:auto;
-
-          animation:
-            sl-fade-in
-            .32s ease
-            both;
-        }
-
-        .sl-screen::-webkit-scrollbar {
-          display:none;
-        }
-
-        .sl-screen-body {
-          padding:
-            14px
-            22px
-            26px;
-
-          display:flex;
-          flex-direction:column;
-
-          flex:1;
-        }
-
-        @keyframes sl-fade-in {
-          from {
-            opacity:0;
-            transform:
-              translateY(6px);
-          }
-
-          to {
-            opacity:1;
-            transform:none;
-          }
-        }
-
-        /* ---------------------------------------------------------
-           HOME
-        --------------------------------------------------------- */
-
-        .sl-home {
-          padding:
-            0
-            26px
-            26px;
-
-          justify-content:
-            space-between;
-        }
-
-        .sl-home-top {
-          display:flex;
-          justify-content:flex-end;
-
-          padding-top:8px;
-        }
-
-        .sl-home-hero {
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-
-          text-align:center;
-
-          gap:10px;
-
-          margin-top:18px;
-        }
-
-        .sl-wordmark {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:700;
-
-          font-size:30px;
-
-          color:var(--text-1);
-
-          margin:
-            4px
-            0
-            0;
-
-          letter-spacing:
-            -0.02em;
-        }
-
-        .sl-tagline {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:500;
-
-          font-size:15px;
-
-          color:var(--brand);
-
-          margin:0;
-        }
-
-        .sl-home-desc {
-          color:var(--text-2);
-
-          font-size:13.5px;
-
-          max-width:260px;
-
-          line-height:1.5;
-
-          margin:
-            2px
-            0
-            0;
-        }
-
-        .sl-home-actions {
-          display:flex;
-          flex-direction:column;
-
-          gap:12px;
-
-          margin-bottom:6px;
-        }
-
-        .sl-home-footer {
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          gap:6px;
-
-          color:var(--text-3);
-
-          font-size:11px;
-
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          text-align:center;
-        }
-
-        .sl-dot {
-          opacity:0.5;
-        }
-
-        /* ---------------------------------------------------------
-           BUTTONS
-        --------------------------------------------------------- */
-
-        .sl-btn {
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          gap:8px;
-
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:600;
-
-          font-size:14.5px;
-
-          padding:
-            15px
-            20px;
-
-          border-radius:16px;
-
-          border:
-            1px solid
-            transparent;
-
-          cursor:pointer;
-
-          transition:
-            transform .15s ease,
-            filter .15s ease,
-            background .15s ease;
-        }
-
-        .sl-btn:active {
-          transform:
-            scale(0.98);
-        }
-
-        .sl-btn-block {
-          width:100%;
-        }
-
-        .sl-btn-primary {
-          background:
-            linear-gradient(
-              135deg,
-              var(--brand),
-              #4169E1
-            );
-
-          color:#fff;
-
-          box-shadow:
-            0 12px 24px -10px
-            rgba(
-              91,
-              140,
-              255,
-              0.55
-            );
-        }
-
-        .sl-btn-primary:hover {
-          filter:
-            brightness(1.08);
-        }
-
-        .sl-btn-primary:disabled {
-          opacity:0.35;
-
-          cursor:not-allowed;
-
-          box-shadow:none;
-        }
-
-        .sl-btn-ghost {
-          background:
-            var(--surface-2);
-
-          color:var(--text-1);
-
-          border-color:
-            var(--border);
-        }
-
-        .sl-btn-ghost:hover {
-          background:
-            rgba(
-              255,
-              255,
-              255,
-              0.08
-            );
-        }
-
-        /* ---------------------------------------------------------
-           INPUT
-        --------------------------------------------------------- */
-
-        .sl-capture-row {
-          display:flex;
-          gap:10px;
-        }
-
-        .sl-capture-btn {
-          flex:1;
-
-          display:flex;
-          align-items:center;
-          justify-content:center;
-
-          gap:7px;
-
-          padding:
-            13px
-            10px;
-
-          border-radius:14px;
-
-          border:
-            1px solid
-            var(--border);
-
-          background:
-            var(--surface-2);
-
-          color:var(--text-2);
-
-          font-size:13px;
-
-          font-weight:600;
-
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          cursor:pointer;
-        }
-
-        .sl-capture-btn-active {
-          color:var(--brand);
-
-          border-color:
-            rgba(
-              91,
-              140,
-              255,
-              0.5
-            );
-
-          background:
-            var(--brand-soft);
-
-          cursor:default;
-        }
-
-        .sl-hidden-input {
-          display:none;
-        }
-
-        .sl-inline-scan {
-          display:flex;
-
-          align-items:center;
-
-          gap:8px;
-
-          margin-top:12px;
-
-          font-size:12.5px;
-
-          color:var(--brand);
-
-          font-family:
-            'JetBrains Mono',
-            monospace;
-        }
-
-        .sl-inline-scan-dot {
-          width:7px;
-          height:7px;
-
-          border-radius:50%;
-
-          background:
-            var(--brand);
-
-          animation:
-            sl-pulse
-            0.9s
-            ease-in-out
-            infinite;
-        }
-
-        @keyframes sl-pulse {
-          0%,
-          100% {
-            opacity:0.35;
-          }
-
-          50% {
-            opacity:1;
-          }
-        }
-
-        .sl-textarea {
-          margin-top:16px;
-
-          width:100%;
-
-          resize:none;
-
-          background:
-            var(--surface-2);
-
-          border:
-            1px solid
-            var(--border);
-
-          border-radius:16px;
-
-          padding:
-            14px
-            16px;
-
-          color:var(--text-1);
-
-          font-size:13.5px;
-
-          line-height:1.55;
-
-          font-family:
-            'Inter',
-            sans-serif;
-
-          outline:none;
-
-          transition:
-            border-color
-            .15s ease;
-        }
-
-        .sl-textarea:focus {
-          border-color:
-            rgba(
-              91,
-              140,
-              255,
-              0.6
-            );
-        }
-
-        .sl-textarea::placeholder {
-          color:var(--text-3);
-        }
-
-        .sl-section-lead {
-          color:var(--text-2);
-
-          font-size:12.5px;
-
-          margin:
-            4px
-            0
-            12px;
-        }
-
-        .sl-example-row {
-          display:flex;
-
-          flex-wrap:wrap;
-
-          gap:8px;
-        }
-
-        .sl-example-chip {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-size:12px;
-
-          font-weight:600;
-
-          padding:
-            9px
-            13px;
-
-          border-radius:100px;
-
-          border:1px solid;
-
-          cursor:pointer;
-
-          background:transparent;
-        }
-
-        /* ---------------------------------------------------------
-           TONES
-        --------------------------------------------------------- */
-
-        .sl-tone-danger {
-          color:var(--danger);
-
-          border-color:
-            rgba(
-              255,
-              93,
-              108,
-              0.4
-            );
-
-          background:
-            var(--danger-soft);
-        }
-
-        .sl-tone-warn {
-          color:var(--warn);
-
-          border-color:
-            rgba(
-              245,
-              184,
-              51,
-              0.4
-            );
-
-          background:
-            var(--warn-soft);
-        }
-
-        .sl-tone-safe {
-          color:var(--safe);
-
-          border-color:
-            rgba(
-              47,
-              217,
-              166,
-              0.4
-            );
-
-          background:
-            var(--safe-soft);
-        }
-
-        /* ---------------------------------------------------------
-           DEMO
-        --------------------------------------------------------- */
-
-        .sl-demo-list {
-          display:flex;
-
-          flex-direction:column;
-
-          gap:12px;
-        }
-
-        .sl-demo-tile {
-          text-align:left;
-
-          border-radius:18px;
-
-          border:1px solid;
-
-          padding:16px;
-
-          cursor:pointer;
-
-          background:
-            var(--surface-2);
-
-          transition:
-            transform .15s ease;
-        }
-
-        .sl-demo-tile:hover {
-          transform:
-            translateY(-2px);
-        }
-
-        .sl-demo-tile-top {
-          display:flex;
-
-          align-items:center;
-
-          justify-content:space-between;
-
-          color:var(--text-1);
-        }
-
-        .sl-demo-tile-tag {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:700;
-
-          font-size:13px;
-        }
-
-        .sl-demo-tile-msg {
-          color:var(--text-1);
-
-          font-size:12.5px;
-
-          margin:
-            10px
-            0
-            4px;
-
-          line-height:1.5;
-
-          opacity:0.9;
-        }
-
-        .sl-demo-tile-desc {
-          color:var(--text-3);
-
-          font-size:11px;
-
-          margin:0;
-        }
-
-        /* ---------------------------------------------------------
-           ANALYZING
-        --------------------------------------------------------- */
-
-        .sl-analyzing {
-          align-items:center;
-
-          justify-content:center;
-
-          padding:
-            30px
-            30px;
-
-          gap:26px;
-
-          text-align:center;
-        }
-
-        .sl-scan-ring-wrap {
-          position:relative;
-
-          width:120px;
-          height:120px;
-
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          margin-bottom:6px;
-        }
-
-        .sl-scan-ring-outer,
-        .sl-scan-ring-mid {
-          position:absolute;
-
-          border-radius:50%;
-
-          border:
-            1.5px
-            dashed
-            rgba(
-              91,
-              140,
-              255,
-              0.35
-            );
-        }
-
-        .sl-scan-ring-outer {
-          width:120px;
-          height:120px;
-        }
-
-        .sl-scan-ring-mid {
-          width:86px;
-          height:86px;
-
-          border-color:
-            rgba(
-              91,
-              140,
-              255,
-              0.5
-            );
-        }
-
-        .sl-spin-slow {
-          animation:
-            sl-spin
-            5s
-            linear
-            infinite;
-        }
-
-        .sl-spin-rev {
-          animation:
-            sl-spin
-            3.4s
-            linear
-            infinite
-            reverse;
-        }
-
-        @keyframes sl-spin {
-          to {
-            transform:
-              rotate(360deg);
-          }
-        }
-
-        .sl-analyzing-title {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:600;
-
-          font-size:17px;
-
-          color:var(--text-1);
-
-          margin:0;
-        }
-
-        .sl-checklist {
-          display:flex;
-
-          flex-direction:column;
-
-          gap:11px;
-
-          width:100%;
-
-          max-width:280px;
-        }
-
-        .sl-check-row {
-          display:flex;
-
-          align-items:center;
-
-          gap:10px;
-
-          font-size:12.5px;
-
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          color:var(--text-3);
-
-          transition:
-            color
-            .2s ease;
-
-          text-align:left;
-        }
-
-        .sl-check-active {
-          color:var(--text-1);
-        }
-
-        .sl-check-done {
-          color:var(--safe);
-        }
-
-        .sl-check-icon {
-          width:16px;
-          height:16px;
-
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          flex-shrink:0;
-        }
-
-        .sl-check-empty {
-          width:7px;
-          height:7px;
-
-          border-radius:50%;
-
-          background:
-            var(--text-3);
-
-          opacity:0.5;
-        }
-
-        .sl-check-spinner {
-          width:12px;
-          height:12px;
-
-          border-radius:50%;
-
-          border:
-            2px
-            solid
-            rgba(
-              91,
-              140,
-              255,
-              0.25
-            );
-
-          border-top-color:
-            var(--brand);
-
-          animation:
-            sl-spin
-            0.7s
-            linear
-            infinite;
-        }
-
-        /* ---------------------------------------------------------
-           RESULT
-        --------------------------------------------------------- */
-
-        .sl-result-body {
-          align-items:center;
-
-          text-align:center;
-        }
-
-        .sl-verdict-banner {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:700;
-
-          font-size:13px;
-
-          letter-spacing:
-            0.06em;
-
-          padding:
-            9px
-            18px;
-
-          border-radius:100px;
-
-          border:1px solid;
-
-          margin-bottom:18px;
-        }
-
-        .sl-gauge-wrap {
-          position:relative;
-
-          width:168px;
-          height:168px;
-
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          margin-bottom:14px;
-        }
-
-        .sl-gauge-track {
-          fill:none;
-
-          stroke:
-            rgba(
-              255,
-              255,
-              255,
-              0.07
-            );
-
-          stroke-width:10;
-        }
-
-        .sl-gauge-center {
-          position:absolute;
-
-          display:flex;
-
-          flex-direction:column;
-
-          align-items:center;
-        }
-
-        .sl-gauge-score {
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          font-weight:700;
-
-          font-size:38px;
-
-          line-height:1;
-        }
-
-        .sl-gauge-max {
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          font-size:12px;
-
-          color:var(--text-3);
-
-          margin-top:2px;
-        }
-
-        .sl-gauge-label {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-size:11px;
-
-          color:var(--text-2);
-
-          margin-top:6px;
-
-          letter-spacing:
-            0.04em;
-
-          text-transform:
-            uppercase;
-        }
-
-        .sl-result-headline {
-          color:var(--text-1);
-
-          font-size:14px;
-
-          font-weight:500;
-
-          max-width:280px;
-
-          margin:
-            2px
-            0
-            22px;
-
-          line-height:1.5;
-        }
-
-        /* ---------------------------------------------------------
-           REASONS
-        --------------------------------------------------------- */
-
-        .sl-reasons-block {
-          width:100%;
-
-          text-align:left;
-
-          margin-bottom:20px;
-        }
-
-        .sl-reasons-title {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-size:11.5px;
-
-          font-weight:700;
-
-          letter-spacing:
-            0.1em;
-
-          color:var(--text-3);
-        }
-
-        .sl-reasons-list {
-          display:flex;
-
-          flex-direction:column;
-
-          gap:9px;
-
-          margin-top:12px;
-        }
-
-        .sl-reason-row {
-          display:flex;
-
-          align-items:center;
-
-          gap:10px;
-
-          font-size:13px;
-
-          color:var(--text-1);
-
-          background:
-            var(--surface-2);
-
-          border:
-            1px solid
-            var(--border);
-
-          border-radius:13px;
-
-          padding:
-            10px
-            12px;
-
-          opacity:0;
-
-          transform:
-            translateX(-8px);
-
-          transition:
-            opacity
-            .35s ease,
-            transform
-            .35s ease;
-        }
-
-        .sl-reason-in {
-          opacity:1;
-
-          transform:none;
-        }
-
-        .sl-reason-icon {
-          width:26px;
-          height:26px;
-
-          border-radius:9px;
-
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          flex-shrink:0;
-        }
-
-        /* ---------------------------------------------------------
-           AI / EXPLANATION
-        --------------------------------------------------------- */
-
-        .sl-ai-block {
-          width:100%;
-
-          text-align:left;
-
-          background:
-            var(--brand-soft);
-
-          border:
-            1px solid
-            rgba(
-              91,
-              140,
-              255,
-              0.28
-            );
-
-          border-radius:16px;
-
-          padding:
-            14px
-            16px;
-
-          margin-bottom:16px;
-        }
-
-        .sl-ai-block-head {
-          display:flex;
-
-          align-items:center;
-
-          gap:6px;
-
-          color:var(--brand);
-
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:700;
-
-          font-size:11.5px;
-
-          letter-spacing:
-            0.06em;
-
-          text-transform:
-            uppercase;
-        }
-
-        .sl-ai-block-text {
-          color:var(--text-1);
-
-          font-size:12.5px;
-
-          line-height:1.6;
-
-          margin:
-            8px
-            0
-            0;
-
-          opacity:0.92;
-        }
-
-        /* ---------------------------------------------------------
-           ACTION
-        --------------------------------------------------------- */
-
-        .sl-action-block {
-          width:100%;
-
-          text-align:left;
-
-          background:
-            var(--surface-2);
-
-          border:
-            1px solid
-            var(--border);
-
-          border-radius:16px;
-
-          padding:
-            14px
-            16px;
-
-          margin-bottom:20px;
-        }
-
-        .sl-action-title {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-size:11.5px;
-
-          font-weight:700;
-
-          letter-spacing:
-            0.08em;
-
-          color:var(--text-3);
-        }
-
-        .sl-action-text {
-          color:var(--text-1);
-
-          font-size:13.5px;
-
-          font-weight:500;
-
-          margin:
-            8px
-            0
-            0;
-
-          line-height:1.5;
-        }
-
-        /* ---------------------------------------------------------
-           HOW IT WORKS
-        --------------------------------------------------------- */
-
-        .sl-flow {
-          display:flex;
-
-          flex-direction:column;
-        }
-
-        .sl-flow-row {
-          display:grid;
-
-          grid-template-columns:
-            30px
-            1fr;
-
-          column-gap:14px;
-
-          position:relative;
-
-          padding-bottom:22px;
-        }
-
-        .sl-flow-row:last-child {
-          padding-bottom:0;
-        }
-
-        .sl-flow-num {
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
-          font-size:11px;
-
-          font-weight:700;
-
-          color:var(--brand);
-
-          background:
-            var(--brand-soft);
-
-          border:
-            1px
-            solid
-            rgba(
-              91,
-              140,
-              255,
-              0.35
-            );
-
-          border-radius:9px;
-
-          width:30px;
-          height:30px;
-
-          display:flex;
-
-          align-items:center;
-          justify-content:center;
-
-          z-index:1;
-        }
-
-        .sl-flow-line {
-          position:absolute;
-
-          left:14px;
-
-          top:30px;
-
-          bottom:0;
-
-          width:1px;
-
-          background:
-            var(--border);
-        }
-
-        .sl-flow-row:last-child
-        .sl-flow-line {
-          display:none;
-        }
-
-        .sl-flow-title {
-          font-family:
-            'Space Grotesk',
-            sans-serif;
-
-          font-weight:600;
-
-          font-size:13.5px;
-
-          color:var(--text-1);
-
-          margin-top:5px;
-        }
-
-        .sl-flow-desc {
-          color:var(--text-3);
-
-          font-size:11.5px;
-
-          margin-top:3px;
-
-          line-height:1.45;
-        }
-
+          width: 100%; max-width: 380px; height: 780px; max-height: 92vh;
+          background: linear-gradient(180deg, var(--surface) 0%, var(--ink) 100%);
+          border-radius: 40px; border: 1px solid var(--border);
+          box-shadow: 0 40px 90px -30px rgba(0,0,0,0.7), 0 0 0 8px rgba(255,255,255,0.02);
+          overflow: hidden; position: relative; display:flex; flex-direction:column;
+        }
+
+        .sl-statusbar { display:flex; align-items:center; justify-content:space-between; padding: 14px 26px 4px; color: var(--text-1); font-family:'JetBrains Mono',monospace; font-size:12px; }
+        .sl-statusicons { display:flex; align-items:center; gap:6px; color: var(--text-1); }
+
+        .sl-topbar { display:flex; align-items:center; justify-content:space-between; padding: 6px 10px 2px; }
+        .sl-topbar-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; color: var(--text-1); letter-spacing:0.2px; }
+        .sl-iconbtn { width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center; background: var(--surface-2); border:1px solid var(--border); color: var(--text-1); cursor:pointer; transition: background .15s ease, transform .15s ease; }
+        .sl-iconbtn:hover { background: rgba(255,255,255,0.09); transform: translateY(-1px); }
+
+        .sl-screen { flex:1; display:flex; flex-direction:column; overflow-y:auto; animation: sl-fade-in .32s ease both; }
+        .sl-screen::-webkit-scrollbar { display:none; }
+        .sl-screen-body { padding: 14px 22px 26px; display:flex; flex-direction:column; flex:1; }
+        @keyframes sl-fade-in { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform:none; } }
+
+        /* Home */
+        .sl-home { padding: 0 26px 26px; justify-content:space-between; }
+        .sl-home-top { display:flex; justify-content:flex-end; padding-top:8px; }
+        .sl-home-hero { display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px; margin-top: 18px; }
+        .sl-wordmark { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:30px; color: var(--text-1); margin: 4px 0 0; letter-spacing: -0.02em; }
+        .sl-tagline { font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:15px; color: var(--brand); margin:0; }
+        .sl-home-desc { color: var(--text-2); font-size:13.5px; max-width: 240px; line-height:1.5; margin:2px 0 0; }
+        .sl-home-secondary { color: var(--text-3); font-size:11.5px; max-width:270px; line-height:1.45; margin:0; }
+        .sl-gaming-card { display:flex; align-items:flex-start; gap:11px; margin: 4px 0 8px; padding:13px 14px; border-radius:16px; background: var(--surface-2); border:1px solid rgba(91,140,255,0.22); }
+        .sl-gaming-card-icon { width:30px; height:30px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:10px; color:var(--brand); background:var(--brand-soft); border:1px solid rgba(91,140,255,0.25); }
+        .sl-gaming-card-title { color:var(--text-1); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12.5px; margin-bottom:3px; }
+        .sl-gaming-card-text { color:var(--text-2); font-size:11px; line-height:1.45; }
+        .sl-home-actions { display:flex; flex-direction:column; gap:12px; margin-bottom: 6px; }
+        .sl-home-footer { display:flex; align-items:center; justify-content:center; gap:6px; color: var(--text-3); font-size:11px; font-family:'JetBrains Mono',monospace; }
+        .sl-dot { opacity:0.5; }
+
+        /* Buttons */
+        .sl-btn { display:flex; align-items:center; justify-content:center; gap:8px; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; padding: 15px 20px; border-radius:16px; border:1px solid transparent; cursor:pointer; transition: transform .15s ease, filter .15s ease, background .15s ease; }
+        .sl-btn:active { transform: scale(0.98); }
+        .sl-btn-block { width:100%; }
+        .sl-btn-primary { background: linear-gradient(135deg, var(--brand), #4169E1); color:#fff; box-shadow: 0 12px 24px -10px rgba(91,140,255,0.55); }
+        .sl-btn-primary:hover { filter: brightness(1.08); }
+        .sl-btn-primary:disabled { opacity:0.35; cursor:not-allowed; box-shadow:none; }
+        .sl-btn-ghost { background: var(--surface-2); color: var(--text-1); border-color: var(--border); }
+        .sl-btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+        /* Input screen */
+        .sl-capture-row { display:flex; gap:10px; }
+        .sl-capture-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding: 13px 10px; border-radius:14px; border:1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size:13px; font-weight:600; font-family:'Space Grotesk',sans-serif; cursor:pointer; }
+        .sl-capture-btn-active { color: var(--brand); border-color: rgba(91,140,255,0.5); background: var(--brand-soft); cursor:default; }
+        .sl-hidden-input { display:none; }
+        .sl-inline-scan { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color: var(--brand); font-family:'JetBrains Mono',monospace; }
+        .sl-inline-scan-dot { width:7px; height:7px; border-radius:50%; background: var(--brand); animation: sl-pulse 0.9s ease-in-out infinite; }
+        @keyframes sl-pulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
+
+        .sl-textarea { margin-top:16px; width:100%; resize:none; background: var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:14px 16px; color: var(--text-1); font-size:13.5px; line-height:1.55; font-family:'Inter',sans-serif; outline:none; transition:border-color .15s ease; }
+        .sl-textarea:focus { border-color: rgba(91,140,255,0.6); }
+        .sl-textarea::placeholder { color: var(--text-3); }
+
+        .sl-section-lead { color: var(--text-2); font-size:12.5px; margin: 4px 0 12px; }
+        .sl-example-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .sl-example-chip { font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:600; padding:9px 13px; border-radius:100px; border:1px solid; cursor:pointer; background:transparent; }
+
+        .sl-tone-danger { color: var(--danger); border-color: rgba(255,93,108,0.4); background: var(--danger-soft); }
+        .sl-tone-warn { color: var(--warn); border-color: rgba(245,184,51,0.4); background: var(--warn-soft); }
+        .sl-tone-safe { color: var(--safe); border-color: rgba(47,217,166,0.4); background: var(--safe-soft); }
+
+        /* Demo picker */
+        .sl-demo-list { display:flex; flex-direction:column; gap:12px; }
+        .sl-demo-tile { text-align:left; border-radius:18px; border:1px solid; padding:16px; cursor:pointer; background: var(--surface-2); transition: transform .15s ease; }
+        .sl-demo-tile:hover { transform: translateY(-2px); }
+        .sl-demo-tile-top { display:flex; align-items:center; justify-content:space-between; color: var(--text-1); }
+        .sl-demo-tile-tag { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; }
+        .sl-demo-tile-msg { color: var(--text-1); font-size:12.5px; margin:10px 0 4px; line-height:1.5; opacity:0.9; }
+        .sl-demo-tile-desc { color: var(--text-3); font-size:11px; margin:0; }
+
+        /* Analyzing */
+        .sl-analyzing { align-items:center; justify-content:center; padding: 30px 30px; gap: 26px; text-align:center; }
+        .sl-scan-ring-wrap { position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
+        .sl-scan-ring-outer, .sl-scan-ring-mid { position:absolute; border-radius:50%; border: 1.5px dashed rgba(91,140,255,0.35); }
+        .sl-scan-ring-outer { width:120px; height:120px; }
+        .sl-scan-ring-mid { width:86px; height:86px; border-color: rgba(91,140,255,0.5); }
+        .sl-spin-slow { animation: sl-spin 5s linear infinite; }
+        .sl-spin-rev { animation: sl-spin 3.4s linear infinite reverse; }
+        @keyframes sl-spin { to { transform: rotate(360deg); } }
+        .sl-analyzing-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:17px; color: var(--text-1); margin:0; }
+        .sl-checklist { display:flex; flex-direction:column; gap:11px; width:100%; max-width:260px; }
+        .sl-check-row { display:flex; align-items:center; gap:10px; font-size:12.5px; font-family:'JetBrains Mono',monospace; color: var(--text-3); transition: color .2s ease; text-align:left; }
+        .sl-check-active { color: var(--text-1); }
+        .sl-check-done { color: var(--safe); }
+        .sl-check-icon { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .sl-check-empty { width:7px; height:7px; border-radius:50%; background: var(--text-3); opacity:0.5; }
+        .sl-check-spinner { width:12px; height:12px; border-radius:50%; border:2px solid rgba(91,140,255,0.25); border-top-color: var(--brand); animation: sl-spin 0.7s linear infinite; }
+
+        /* Result */
+        .sl-result-body { align-items:center; text-align:center; }
+        .sl-verdict-banner { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; letter-spacing:0.06em; padding:9px 18px; border-radius:100px; border:1px solid; margin-bottom: 18px; }
+        .sl-gauge-wrap { position:relative; width:168px; height:168px; display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
+        .sl-gauge-track { fill:none; stroke: rgba(255,255,255,0.07); stroke-width:10; }
+        .sl-gauge-center { position:absolute; display:flex; flex-direction:column; align-items:center; }
+        .sl-gauge-score { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:38px; line-height:1; }
+        .sl-gauge-max { font-family:'JetBrains Mono',monospace; font-size:12px; color: var(--text-3); margin-top:2px; }
+        .sl-gauge-label { font-family:'Space Grotesk',sans-serif; font-size:11px; color: var(--text-2); margin-top:6px; letter-spacing:0.04em; text-transform:uppercase; }
+        .sl-result-headline { color: var(--text-1); font-size:14px; font-weight:500; max-width:260px; margin: 2px 0 22px; line-height:1.5; }
+
+        .sl-reasons-block { width:100%; text-align:left; margin-bottom:20px; }
+        .sl-reasons-title { font-family:'Space Grotesk',sans-serif; font-size:11.5px; font-weight:700; letter-spacing:0.1em; color: var(--text-3); }
+        .sl-reasons-list { display:flex; flex-direction:column; gap:9px; margin-top:12px; }
+        .sl-reason-row { display:flex; align-items:center; gap:10px; font-size:13px; color: var(--text-1); background: var(--surface-2); border:1px solid var(--border); border-radius:13px; padding:10px 12px; opacity:0; transform: translateX(-8px); transition: opacity .35s ease, transform .35s ease; }
+        .sl-reason-in { opacity:1; transform:none; }
+        .sl-reason-icon { width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+        .sl-ai-block { width:100%; text-align:left; background: var(--brand-soft); border:1px solid rgba(91,140,255,0.28); border-radius:16px; padding:14px 16px; margin-bottom:16px; }
+        .sl-ai-block-head { display:flex; align-items:center; gap:6px; color: var(--brand); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; }
+        .sl-ai-block-text { color: var(--text-1); font-size:12.5px; line-height:1.6; margin: 8px 0 0; opacity:0.92; }
+
+        .sl-action-block { width:100%; text-align:left; background: var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:14px 16px; margin-bottom:20px; }
+        .sl-action-title { font-family:'Space Grotesk',sans-serif; font-size:11.5px; font-weight:700; letter-spacing:0.08em; color: var(--text-3); }
+        .sl-action-text { color: var(--text-1); font-size:13.5px; font-weight:500; margin: 8px 0 0; line-height:1.5; }
+
+        /* How it works */
+        .sl-flow { display:flex; flex-direction:column; }
+        .sl-flow-row { display:grid; grid-template-columns: 30px 1fr; column-gap: 14px; position:relative; padding-bottom: 22px; }
+        .sl-flow-row:last-child { padding-bottom:0; }
+        .sl-flow-num { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color: var(--brand); background: var(--brand-soft); border:1px solid rgba(91,140,255,0.35); border-radius:9px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; z-index:1; }
+        .sl-flow-line { position:absolute; left:14px; top:30px; bottom:0; width:1px; background: var(--border); }
+        .sl-flow-row:last-child .sl-flow-line { display:none; }
+        .sl-flow-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13.5px; color: var(--text-1); margin-top:5px; }
+        .sl-flow-desc { color: var(--text-3); font-size:11.5px; margin-top:3px; }
       `}</style>
 
       <div className="sl-phone">
-
         <StatusBar />
 
         {screen === "home" && (
           <HomeScreen
-            goInput={() =>
-              setScreen("input")
-            }
-
-            goDemo={() =>
-              setScreen("demo")
-            }
-
-            goHow={() =>
-              setScreen("how")
-            }
+            goInput={() => setScreen("input")}
+            goDemo={() => setScreen("demo")}
+            goHow={() => setScreen("how")}
           />
         )}
 
         {screen === "demo" && (
-          <DemoPickerScreen
-            goBack={() =>
-              setScreen("home")
-            }
-
-            pick={(c) =>
-              startAnalysis(c)
-            }
-          />
+          <DemoPickerScreen goBack={() => setScreen("home")} pick={(c) => startAnalysis(c)} />
         )}
 
         {screen === "input" && (
           <InputScreen
-            goBack={() =>
-              setScreen("home")
-            }
-
-            goHow={() =>
-              setScreen("how")
-            }
-
-            runAnalysis={(text) =>
-              startAnalysis(text)
-            }
+            goBack={() => setScreen("home")}
+            goHow={() => setScreen("how")}
+            runAnalysis={(text) => startAnalysis(text)}
           />
         )}
 
-        {screen === "analyzing" && (
-          <AnalyzingScreen
-            onDone={
-              finishAnalysis
-            }
+        {screen === "analyzing" && <AnalyzingScreen onDone={finishAnalysis} />}
+
+        {screen === "result" && result && (
+          <ResultScreen
+            result={result}
+            goBack={() => setScreen("input")}
+            goHow={() => setScreen("how")}
+            goCheckAnother={() => setScreen("input")}
           />
         )}
 
-        {screen === "result" &&
-          result && (
-            <ResultScreen
-              result={result}
-
-              goBack={() =>
-                setScreen(
-                  "input"
-                )
-              }
-
-              goHow={() =>
-                setScreen(
-                  "how"
-                )
-              }
-
-              goCheckAnother={() =>
-                setScreen(
-                  "input"
-                )
-              }
-            />
-          )}
-
-        {screen === "how" && (
-          <HowScreen
-            goBack={() =>
-              setScreen(
-                result
-                  ? "result"
-                  : "home"
-              )
-            }
-          />
-        )}
-
+        {screen === "how" && <HowScreen goBack={() => setScreen(result ? "result" : "home")} />}
       </div>
     </div>
   );
