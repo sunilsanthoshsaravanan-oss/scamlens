@@ -19,12 +19,14 @@ import {
   Wifi,
   BatteryFull,
   Signal,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 
-/* =========================================================================
-   ScamLens — "Check before you pay."
-   Complete prototype
-   ========================================================================= */
+/* ============================================================
+   ScamLens — Check before you pay.
+   Mobile-first cybersecurity prototype
+   ============================================================ */
 
 const CASES = {
   high: {
@@ -66,7 +68,7 @@ const CASES = {
     recommendation:
       "Do not pay the verification fee. Verify the tournament through its official channel.",
     explanation:
-      "This message combines gaming-related content with an unexpected payment request and urgent language. These patterns can be associated with payment scams.",
+      "This message combines gaming-related content with an unexpected payment request and urgent language. These patterns can be associated with gaming-related scams.",
   },
 
   medium: {
@@ -80,10 +82,7 @@ const CASES = {
     headline: "Some signals require manual verification.",
     reasons: [
       { label: "Unexpected verification instruction", icon: "info" },
-      {
-        label: "Financial request requiring confirmation",
-        icon: "rupee",
-      },
+      { label: "Financial request requiring confirmation", icon: "rupee" },
     ],
     recommendation:
       "Verify the refund through the official merchant/app.",
@@ -109,9 +108,9 @@ const CASES = {
   },
 };
 
-/* =========================================================================
-   ICON MAP
-   ========================================================================= */
+/* ============================================================
+   Icons
+   ============================================================ */
 
 const ICONS = {
   rupee: IndianRupee,
@@ -122,9 +121,9 @@ const ICONS = {
   link: Link2,
 };
 
-/* =========================================================================
-   ACCENT COLORS
-   ========================================================================= */
+/* ============================================================
+   Accent system
+   ============================================================ */
 
 const ACCENT = {
   high: {
@@ -132,13 +131,11 @@ const ACCENT = {
     soft: "var(--danger-soft)",
     ring: "var(--danger)",
   },
-
   medium: {
     fg: "var(--warn)",
     soft: "var(--warn-soft)",
     ring: "var(--warn)",
   },
-
   low: {
     fg: "var(--safe)",
     soft: "var(--safe-soft)",
@@ -146,58 +143,29 @@ const ACCENT = {
   },
 };
 
-/* =========================================================================
-   RISK LEVEL
-   ========================================================================= */
-
 function levelMeta(level) {
   if (level === "high") {
-    return {
-      label: "HIGH RISK",
-      dot: "🔴",
-    };
+    return { label: "HIGH RISK", dot: "🔴" };
   }
 
   if (level === "medium") {
-    return {
-      label: "NEEDS VERIFICATION",
-      dot: "🟡",
-    };
+    return { label: "NEEDS VERIFICATION", dot: "🟡" };
   }
 
-  return {
-    label: "LOW RISK",
-    dot: "🟢",
-  };
+  return { label: "LOW RISK", dot: "🟢" };
 }
 
-/* =========================================================================
-   COMPLETE SCAM DETECTION ENGINE
-   ========================================================================= */
+/* ============================================================
+   Scam detection engine
+   ============================================================ */
 
 function analyzeCustomText(raw) {
   const text = raw.trim();
   const norm = text.toLowerCase();
 
   if (!text) {
-    return {
-      id: "custom",
-      accent: "low",
-      message: "",
-      level: "low",
-      score: 0,
-      headline: "No message was provided.",
-      reasons: [],
-      recommendation:
-        "Paste a message to begin the analysis.",
-      explanation:
-        "ScamLens needs message content before it can perform an analysis.",
-    };
+    return CASES.low;
   }
-
-  /* -----------------------------------------------------------------------
-     Canonical demo detection
-     ----------------------------------------------------------------------- */
 
   for (const c of Object.values(CASES)) {
     if (norm === c.message.toLowerCase()) {
@@ -207,307 +175,184 @@ function analyzeCustomText(raw) {
 
   const signals = [];
 
-  const addSignal = (label, icon, weight) => {
-    if (!signals.some((s) => s.label === label)) {
-      signals.push({
-        label,
-        icon,
-        weight,
-      });
-    }
-  };
-
-  /* -----------------------------------------------------------------------
-     1. PAYMENT / FEE
-     ----------------------------------------------------------------------- */
-
+  /* Payment */
   if (
-    /pay ₹|pay rs|pay inr|processing fee|registration fee|training fee|course fee|application fee|verification fee|activation fee|security deposit|advance payment|deposit.*fee|fee.*payment|payment.*fee|make.*payment|payment.*required|fees are applicable|fee is applicable|fee applicable|paid.*fee/i.test(
+    /pay\s*(₹|rs\.?|inr)?\s*\d+|processing fee|verification fee|advance payment|send money|transfer.*fee|payment.*pending|deposit|pay now|make a payment|upi payment|payment required|fee.*claim/i.test(
       text
     )
   ) {
-    addSignal(
-      "Unexpected payment / fee request",
-      "rupee",
-      30
-    );
+    signals.push({
+      label: "Unexpected payment request",
+      icon: "rupee",
+      weight: 30,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     2. FINANCIAL INSTRUCTION
-     ----------------------------------------------------------------------- */
-
+  /* Urgency */
   if (
-    /send money|transfer money|bank transfer|upi|payment pending|deposit money|pay now|pay immediately|make a payment|financial instruction|amount.*required/i.test(
+    /immediately|urgent|within\s+\d+\s*(hours?|days?)|do not delay|asap|act fast|right now|don't wait|hurry|limited time|today only|expire|last chance/i.test(
       text
     )
   ) {
-    addSignal(
-      "Suspicious financial instruction",
-      "rupee",
-      20
-    );
+    signals.push({
+      label: "Urgency / manipulation",
+      icon: "clock",
+      weight: 15,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     3. URGENCY / PRESSURE
-     ----------------------------------------------------------------------- */
-
+  /* Prize */
   if (
-    /immediately|urgent|right now|act fast|asap|don't wait|do not delay|within \d+ (hours?|days?)|limited time|last date|deadline|register.*soon|apply.*soon|stipulated timeline|nearing completion|limited slots|limited seats|limited registrations|hurry/i.test(
+    /won|winner|prize|congratulations|lucky draw|lottery|selected|claim.*reward|bonus|free.*money|reward|cashback|cash prize|tournament reward/i.test(
       text
     )
   ) {
-    addSignal(
-      "Urgency / pressure tactics",
-      "clock",
-      18
-    );
+    signals.push({
+      label: "Prize / reward bait",
+      icon: "gift",
+      weight: 20,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     4. PRIZE / REWARD
-     ----------------------------------------------------------------------- */
-
+  /* Credentials */
   if (
-    /won|prize|congratulations|lucky draw|lottery|selected.*reward|claim.*reward|bonus|cash prize|free money|reward.*₹|reward.*rs/i.test(
+    /otp|one[-\s]?time password|pin|cvv|password|passcode|security code|2fa|two[-\s]?factor|confirm.*password|enter.*otp|provide.*pin|share.*otp|send.*otp/i.test(
       text
     )
   ) {
-    addSignal(
-      "Prize / reward bait",
-      "gift",
-      22
-    );
+    signals.push({
+      label: "Sensitive credential request",
+      icon: "alert",
+      weight: 30,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     5. SCHOLARSHIP / DISCOUNT
-     ----------------------------------------------------------------------- */
-
+  /* KYC */
   if (
-    /scholarship|scholarship code|discount code|concession|50% concession|special offer|exclusive.*students|limited slots|limited seats|eligible candidates.*concession/i.test(
+    /kyc|know your customer|verify.*account|account.*verification|identity.*verification|complete.*verification|confirm.*identity|kyc.*update|kyc.*expire/i.test(
       text
     )
   ) {
-    addSignal(
-      "Scholarship / discount bait",
-      "gift",
-      20
-    );
+    signals.push({
+      label: "KYC / account verification request",
+      icon: "info",
+      weight: 20,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     6. INTERNSHIP / TRAINING
-     ----------------------------------------------------------------------- */
-
+  /* Threats */
   if (
-    /internship|training program|training programme|career program|career programme|skill development|academic guidance|technical training|project-based learning|career readiness/i.test(
+    /will be blocked|will be suspended|will be deactivated|will be closed|account.*block|account.*suspend|account.*lock|account.*restrict|access.*denied|unauthorized activity|unusual activity|suspicious activity|legal action|police complaint/i.test(
       text
     )
   ) {
-    addSignal(
-      "Internship / training solicitation",
-      "info",
-      18
-    );
+    signals.push({
+      label: "Account blocking / security threat",
+      icon: "alert",
+      weight: 25,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     7. CERTIFICATE / PLACEMENT CLAIMS
-     ----------------------------------------------------------------------- */
-
-  if (
-    /completion certificate|course completion certificate|internship completion certificate|placement assistance|hiring partners|job opportunities|career opportunities|letter of recommendation|lifetime access|iso certified|aicte|msme/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "Certification / placement claims",
-      "alert",
-      16
-    );
-  }
-
-  /* -----------------------------------------------------------------------
-     8. LINKS / CALL TO ACTION
-     ----------------------------------------------------------------------- */
-
-  if (
-    /https?:\/\/[^\s]+|www\.[^\s]+|bit\.ly|tinyurl|short\.link|click here|click the link|tap here|visit link|open.*link|verify via|registration link|application form/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "Suspicious link / call-to-action",
-      "link",
-      25
-    );
-  }
-
-  /* -----------------------------------------------------------------------
-     9. CREDENTIAL REQUEST
-     ----------------------------------------------------------------------- */
-
-  if (
-    /otp|pin|cvv|password|passcode|security code|2fa|two-factor|confirm.*password|enter.*otp|provide.*pin|login details|credentials/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "Sensitive credential request",
-      "alert",
-      30
-    );
-  }
-
-  /* -----------------------------------------------------------------------
-     10. KYC / IDENTITY
-     ----------------------------------------------------------------------- */
-
-  if (
-    /kyc|know your customer|verify.*account|account.*verification|identity.*verification|complete.*verification|confirm.*identity|document verification|aadhaar|pan card|government id/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "KYC / identity verification request",
-      "info",
-      22
-    );
-  }
-
-  /* -----------------------------------------------------------------------
-     11. ACCOUNT THREATS
-     ----------------------------------------------------------------------- */
-
-  if (
-    /will be blocked|will be suspended|will be deactivated|will be closed|account.*block|account.*suspend|account.*lock|account.*restrict|access.*denied|unauthorized activity|unusual activity|suspicious activity/i.test(
-      text
-    )
-  ) {
-    addSignal(
-      "Account blocking / security threat",
-      "alert",
-      25
-    );
-  }
-
-  /* -----------------------------------------------------------------------
-     12. BRAND IMPERSONATION
-     ----------------------------------------------------------------------- */
-
-  const knownBrands =
-    /microsoft|microsoft certified|amazon|apple|google|facebook|meta|linkedin|paypal|sbi|state bank|hdfc|icici|axis bank|phonepe|paytm|flipkart|whatsapp|instagram|uber/i;
+  /* Brand impersonation */
+  const brands =
+    /hdfc|icici|axis|sbi|state bank|american express|bank of america|chase|wells fargo|paypal|amazon|apple|microsoft|google|facebook|linkedin|uber|flipkart|whatsapp|instagram|phonepe|paytm|gpay/i;
 
   const formalGreeting =
-    /dear student|dear customer|dear user|dear member|dear valued customer|dear sir|dear madam|greetings/i;
+    /dear customer|dear user|dear member|valued customer|dear sir|dear madam|customer care|support team/i;
 
-  if (
-    knownBrands.test(text) &&
-    formalGreeting.test(text)
-  ) {
-    addSignal(
-      "Possible brand / institution impersonation",
-      "link",
-      25
-    );
+  if (brands.test(text) && formalGreeting.test(text)) {
+    signals.push({
+      label: "Possible brand impersonation",
+      icon: "link",
+      weight: 25,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     13. MICROSOFT / CERTIFICATION CLAIM
-     ----------------------------------------------------------------------- */
-
+  /* Suspicious URL */
   if (
-    /microsoft certified fundamentals|microsoft certified|in collaboration with microsoft|microsoft certification|microsoft.*fundamentals/i.test(
+    /https?:\/\/[^\s]+|www\.[^\s]+|bit\.ly|tinyurl|short\.link|t\.co|click here|click the link|tap here|visit link|open.*link|verify via|login here|secure link/i.test(
       text
     )
   ) {
-    addSignal(
-      "Third-party certification / brand claim",
-      "alert",
-      20
-    );
+    signals.push({
+      label: "Suspicious URL / link",
+      icon: "link",
+      weight: 30,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     14. STUDENT TARGETING
-     ----------------------------------------------------------------------- */
-
+  /* Delivery / refund */
   if (
-    /dear student|students of|students.*college|students.*institute|nationwide|institutional outreach|eligible students|2025 batch|2026 batch|college students/i.test(
+    /refund|delivery.*failed|reschedul|redelivery|confirm.*delivery|retry.*delivery|pending.*refund|parcel|courier|package|shipment/i.test(
       text
     )
   ) {
-    addSignal(
-      "Student-targeted solicitation",
-      "info",
-      14
-    );
+    signals.push({
+      label: "Delivery / refund scam pattern",
+      icon: "info",
+      weight: 15,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     15. EXTERNAL REGISTRATION
-     ----------------------------------------------------------------------- */
-
+  /* Financial instruction */
   if (
-    /application form|registration information|register|registration|apply now|submit.*application|contact information|help@|phone:|email:/i.test(
+    /activation fee|security deposit|balance verification|update.*payment|verify.*payment|account.*fund|bank details|upi id|account number|ifsc|beneficiary/i.test(
       text
     )
   ) {
-    addSignal(
-      "External registration / contact request",
-      "link",
-      15
-    );
+    signals.push({
+      label: "Suspicious financial instruction",
+      icon: "rupee",
+      weight: 20,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     16. GAMING
-     ----------------------------------------------------------------------- */
-
-  const hasGaming =
-    /\bbgmi\b|\bfree\s*fire\b|\bgaming\b|\btournament\b|\besports\b|\buc\b|\bdiamonds\b|game\s+account|gaming\s+account/i.test(
+  /* Gaming */
+  const gamingDetected =
+    /\bbgmi\b|\bfree fire\b|\bgaming\b|\btournament\b|\besports\b|\buc\b|\bdiamonds\b|game account|gaming account|battle royale|clan|game reward|gaming reward/i.test(
       text
     );
 
-  if (hasGaming) {
-    addSignal(
-      "Gaming-related scam pattern",
-      "alert",
-      18
-    );
+  if (gamingDetected) {
+    signals.push({
+      label: "Gaming-related scam pattern",
+      icon: "alert",
+      weight: 18,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     17. DELIVERY / REFUND
-     ----------------------------------------------------------------------- */
-
+  /* Official-looking certificate / internship scam */
   if (
-    /refund|delivery.*failed|reschedul|redelivery|confirm.*delivery|retry.*delivery|pending.*refund|parcel|courier/i.test(
+    /internship|training program|certificate|scholarship|placement assistance|registration fee|training fee|limited slots|application form|microsoft certified|aicte|msme/i.test(
       text
     )
   ) {
-    addSignal(
-      "Delivery / refund scam pattern",
-      "info",
-      15
-    );
+    signals.push({
+      label: "Training / internship solicitation",
+      icon: "info",
+      weight: 18,
+    });
   }
 
-  /* -----------------------------------------------------------------------
-     LEGITIMATE TRANSACTION
-     ----------------------------------------------------------------------- */
+  /* Contact details / external registration */
+  if (
+    /phone:\s*\+?\d+|email:\s*[\w.+-]+@[\w.-]+\.\w+|application form|register now|registration link|click here/i.test(
+      text
+    )
+  ) {
+    signals.push({
+      label: "External registration/contact request",
+      icon: "link",
+      weight: 15,
+    });
+  }
 
   const legit =
-    /completed successfully|transaction id|order confirmed|delivered|payment received|transaction successful/i.test(
+    /completed successfully|transaction id|order confirmed|delivered successfully|payment received|transaction successful/i.test(
       text
     );
 
-  /* -----------------------------------------------------------------------
-     SCORE
-     ----------------------------------------------------------------------- */
-
+  /* Extra risk for combinations */
   let score = 0;
 
   if (signals.length === 0 && legit) {
@@ -515,122 +360,48 @@ function analyzeCustomText(raw) {
   } else if (signals.length === 0) {
     score = 24;
   } else {
-    score = signals.reduce(
-      (total, signal) => total + signal.weight,
-      0
+    score = signals.reduce((sum, signal) => sum + signal.weight, 0);
+
+    /* Combination bonuses */
+    const labels = signals.map((s) => s.label);
+
+    const hasPayment = labels.some(
+      (x) =>
+        x.includes("payment") ||
+        x.includes("financial") ||
+        x.includes("registration")
     );
-  }
 
-  /* -----------------------------------------------------------------------
-     SIGNAL FLAGS
-     ----------------------------------------------------------------------- */
+    const hasLink = labels.some(
+      (x) => x.includes("URL") || x.includes("link")
+    );
 
-  const hasPayment = signals.some(
-    (s) =>
-      s.label.includes("payment") ||
-      s.label.includes("fee") ||
-      s.label.includes("financial")
-  );
+    const hasUrgency = labels.some((x) => x.includes("Urgency"));
 
-  const hasUrgency = signals.some(
-    (s) =>
-      s.label.includes("Urgency") ||
-      s.label.includes("pressure")
-  );
+    const hasCredential = labels.some((x) =>
+      x.includes("credential")
+    );
 
-  const hasScholarship = signals.some(
-    (s) => s.label.includes("Scholarship")
-  );
+    const hasPrize = labels.some((x) =>
+      x.includes("Prize") || x.includes("reward")
+    );
 
-  const hasInternship = signals.some(
-    (s) => s.label.includes("Internship")
-  );
+    const hasGaming = labels.some((x) =>
+      x.includes("Gaming")
+    );
 
-  const hasCertification = signals.some(
-    (s) => s.label.includes("Certification")
-  );
+    const hasImpersonation = labels.some((x) =>
+      x.includes("impersonation")
+    );
 
-  const hasStudentTargeting = signals.some(
-    (s) => s.label.includes("Student")
-  );
-
-  const hasLink = signals.some(
-    (s) =>
-      s.label.includes("link") ||
-      s.label.includes("Link") ||
-      s.label.includes("registration")
-  );
-
-  const hasBrand = signals.some(
-    (s) =>
-      s.label.includes("brand") ||
-      s.label.includes("institution") ||
-      s.label.includes("Third-party")
-  );
-
-  const hasCredential = signals.some(
-    (s) => s.label.includes("credential")
-  );
-
-  const hasThreats = signals.some(
-    (s) => s.label.includes("blocking")
-  );
-
-  const hasPrize = signals.some(
-    (s) =>
-      s.label.includes("Prize") ||
-      s.label.includes("reward")
-  );
-
-  const hasDelivery = signals.some(
-    (s) => s.label.includes("Delivery")
-  );
-
-  /* -----------------------------------------------------------------------
-     COMBINATION BONUSES
-     ----------------------------------------------------------------------- */
-
-  if (
-    hasStudentTargeting &&
-    hasInternship &&
-    hasPayment
-  ) {
-    score += 20;
-  }
-
-  if (hasPayment && hasUrgency) {
-    score += 15;
-  }
-
-  if (hasPayment && hasScholarship) {
-    score += 15;
-  }
-
-  if (hasPayment && hasCertification) {
-    score += 12;
-  }
-
-  if (hasBrand && hasPayment) {
-    score += 18;
-  }
-
-  if (hasBrand && hasLink) {
-    score += 12;
-  }
-
-  if (hasCredential && hasThreats) {
-    score += 20;
-  }
-
-  if (hasPrize && hasUrgency) {
-    score += 15;
+    if (hasPayment && hasLink) score += 12;
+    if (hasPayment && hasUrgency) score += 10;
+    if (hasCredential && hasLink) score += 15;
+    if (hasImpersonation && hasLink) score += 12;
+    if (hasGaming && (hasPayment || hasPrize || hasLink)) score += 12;
   }
 
   score = Math.min(98, score);
-
-  /* -----------------------------------------------------------------------
-     RISK LEVEL
-     ----------------------------------------------------------------------- */
 
   let level = "low";
 
@@ -640,123 +411,118 @@ function analyzeCustomText(raw) {
     level = "medium";
   }
 
-  /* -----------------------------------------------------------------------
-     HEADLINE
-     ----------------------------------------------------------------------- */
-
   let headline;
 
   if (level === "high") {
-    headline =
-      "Multiple high-risk indicators detected.";
+    headline = "Multiple suspicious indicators detected.";
   } else if (level === "medium") {
-    headline =
-      "Some signals require manual verification.";
+    headline = "Some signals require manual verification.";
   } else {
-    headline =
-      "No major suspicious indicators were detected.";
+    headline = "No major suspicious indicators were detected.";
   }
 
-  /* -----------------------------------------------------------------------
-     EXPLANATION
-     ----------------------------------------------------------------------- */
+  const labels = signals.map((s) => s.label);
+
+  const hasPayment = labels.some(
+    (x) =>
+      x.includes("payment") ||
+      x.includes("financial") ||
+      x.includes("registration")
+  );
+
+  const hasCredential = labels.some((x) =>
+    x.includes("credential")
+  );
+
+  const hasVerification = labels.some(
+    (x) =>
+      x.includes("verification") ||
+      x.includes("KYC")
+  );
+
+  const hasThreats = labels.some((x) =>
+    x.includes("blocking")
+  );
+
+  const hasLink = labels.some(
+    (x) => x.includes("URL") || x.includes("link")
+  );
+
+  const hasImpersonation = labels.some((x) =>
+    x.includes("impersonation")
+  );
+
+  const hasUrgency = labels.some((x) =>
+    x.includes("Urgency")
+  );
+
+  const hasDelivery = labels.some((x) =>
+    x.includes("Delivery")
+  );
+
+  const hasPrize = labels.some((x) =>
+    x.includes("Prize")
+  );
+
+  const hasGaming = labels.some((x) =>
+    x.includes("Gaming")
+  );
+
+  const hasTraining = labels.some((x) =>
+    x.includes("Training")
+  );
 
   let explanation;
 
   if (signals.length === 0) {
     explanation =
-      "No major suspicious patterns were detected in this message. It appears to be a routine notification.";
-  } else if (
-    hasStudentTargeting &&
-    hasInternship &&
-    hasPayment &&
-    (hasScholarship || hasCertification)
-  ) {
+      "No suspicious patterns were detected in this message. It appears to be a routine notification.";
+  } else if (hasImpersonation && hasThreats) {
     explanation =
-      "This message targets students with an internship or training opportunity while stating that fees are applicable. It also uses scholarship or certification-related claims and registration prompts. This combination can be associated with paid internship or training scams. Verify the organization, official partnership claims, fees, and registration page independently before paying or sharing personal information.";
-  } else if (
-    hasPayment &&
-    hasUrgency
-  ) {
+      "This message may be impersonating a legitimate institution and uses account-related pressure to influence the user. Verify the sender independently before sharing credentials or taking action.";
+  } else if (hasCredential && hasLink) {
     explanation =
-      "This message combines an unexpected payment or fee request with urgency or pressure. These patterns are commonly associated with financial scams. Verify the sender independently before making any payment.";
-  } else if (
-    hasCredential &&
-    (hasBrand || hasThreats || hasUrgency)
-  ) {
+      "This message requests sensitive information and contains a suspicious link. These are common phishing indicators. Do not click the link or share OTPs, PINs, passwords, or other credentials.";
+  } else if (hasGaming && (hasPayment || hasPrize || hasUrgency || hasLink)) {
     explanation =
-      "This message requests sensitive credentials while using social-engineering tactics such as brand references, urgency, or account threats. Legitimate organizations generally do not request sensitive credentials through unsolicited messages.";
-  } else if (
-    hasBrand &&
-    hasLink &&
-    (hasPayment || hasInternship)
-  ) {
+      "This message combines gaming-related content with suspicious payment, reward, urgency, or link indicators. Verify the game, tournament, reward, or account request through the official channel.";
+  } else if (hasTraining && (hasPayment || hasLink || hasUrgency)) {
     explanation =
-      "This message references a recognizable organization or certification and includes an external registration or call-to-action. Combined with payment or internship claims, this warrants independent verification. Do not rely solely on the branding shown in the message.";
-  } else if (
-    hasGaming &&
-    (hasPayment ||
-      hasPrize ||
-      hasUrgency ||
-      hasLink ||
-      hasCredential)
-  ) {
+      "This message promotes a training or internship opportunity while including registration, payment, external-link, or urgency indicators. Verify the organization, fee structure, certification claims, and registration page independently before paying.";
+  } else if (hasPayment && hasUrgency) {
     explanation =
-      "This message combines gaming-related content with suspicious payment, reward, urgency, link, or credential signals. These patterns can be associated with gaming-related scams. Verify the sender and offer through the official channel.";
-  } else if (
-    hasDelivery &&
-    hasLink
-  ) {
+      "This message combines urgency with an unexpected payment or fee request. These patterns are commonly associated with financial scams. Verify the request independently.";
+  } else if (hasDelivery && hasLink) {
     explanation =
-      "This message references a delivery or refund issue and directs the user toward a link. This is a common phishing pattern. Verify the shipment or refund directly through the official app or website.";
-  } else if (
-    hasPrize &&
-    hasUrgency
-  ) {
+      "This message references a delivery or refund issue and directs the user toward a link. This is a common phishing pattern. Verify the shipment through the official app or website.";
+  } else if (hasPrize && hasUrgency) {
     explanation =
-      "This message claims a reward or prize and uses urgency to encourage immediate action. Prize scams commonly use these tactics to obtain money or sensitive information.";
-  } else if (
-    hasLink &&
-    (hasBrand || hasStudentTargeting)
-  ) {
-    explanation =
-      "This message contains a call-to-action or link while referencing an organization or targeting students. Verify the destination and sender independently before opening the link or submitting information.";
+      "This message claims a prize or reward and uses urgency to influence the user. Prize scams frequently use payment or verification requests.";
   } else if (hasLink) {
     explanation =
-      "This message contains a suspicious link or call-to-action. Avoid opening untrusted links and verify the sender through an official website or app.";
+      "This message contains a suspicious link or external action request. Avoid clicking it and verify the sender through an official channel.";
   } else {
     explanation =
-      "This message contains multiple suspicious indicators. Verify the sender independently and avoid making payments or sharing sensitive information until the request is confirmed.";
+      "This message contains multiple suspicious indicators. Verify the sender independently before making payments or sharing sensitive information.";
   }
-
-  /* -----------------------------------------------------------------------
-     RECOMMENDATION
-     ----------------------------------------------------------------------- */
 
   let recommendation;
 
-  if (
-    hasStudentTargeting &&
-    hasInternship &&
-    hasPayment
-  ) {
+  if (signals.length === 0) {
     recommendation =
-      "Do not pay the training or registration fee yet. Independently verify the organization, Microsoft/AICTE/MSME claims, official partnership, fee structure, and registration website before proceeding.";
-  } else if (
-    hasCredential ||
-    hasThreats
-  ) {
+      "No action needed — no major risk signals were found.";
+  } else if (hasCredential || hasThreats) {
     recommendation =
-      "Do NOT provide OTPs, PINs, passwords, or sensitive information. Contact the organization directly using independently verified official contact information.";
-  } else if (hasPayment) {
+      "Do NOT provide OTPs, PINs, passwords, or sensitive information. Contact the organization through official contact details.";
+  } else if (hasGaming && (hasPayment || hasPrize || hasLink)) {
     recommendation =
-      "Do NOT make a payment or transfer funds until the request has been independently verified through an official channel.";
+      "Do not pay gaming verification or reward fees. Verify the tournament, reward, sender, or account request through its official channel.";
   } else if (hasLink) {
     recommendation =
-      "Do NOT click the link immediately. Open the organization's official website or app separately and verify the offer there.";
-  } else if (hasGaming) {
+      "Do NOT click the link. Open the official website or app directly and verify the request there.";
+  } else if (hasPayment) {
     recommendation =
-      "Verify the gaming offer through the game's official channel before paying, sharing credentials, or opening links.";
+      "Do NOT make the requested payment until the sender and request have been independently verified.";
   } else {
     recommendation =
       "Verify the sender independently using official contact information before taking action.";
@@ -778,9 +544,9 @@ function analyzeCustomText(raw) {
   };
 }
 
-/* =========================================================================
-   LENS MARK
-   ========================================================================= */
+/* ============================================================
+   Lens logo
+   ============================================================ */
 
 function LensMark({
   size = 28,
@@ -833,9 +599,9 @@ function LensMark({
   );
 }
 
-/* =========================================================================
-   STATUS BAR
-   ========================================================================= */
+/* ============================================================
+   Status bar
+   ============================================================ */
 
 function StatusBar() {
   return (
@@ -851,24 +617,18 @@ function StatusBar() {
   );
 }
 
-/* =========================================================================
-   TOP BAR
-   ========================================================================= */
+/* ============================================================
+   Top bar
+   ============================================================ */
 
-function TopBar({
-  title,
-  onBack,
-  onHow,
-}) {
+function TopBar({ title, onBack, onHow }) {
   return (
     <div className="sl-topbar">
       <button
         className="sl-iconbtn"
         onClick={onBack}
         style={{
-          visibility: onBack
-            ? "visible"
-            : "hidden",
+          visibility: onBack ? "visible" : "hidden",
         }}
         aria-label="Back"
       >
@@ -883,9 +643,7 @@ function TopBar({
         className="sl-iconbtn"
         onClick={onHow}
         style={{
-          visibility: onHow
-            ? "visible"
-            : "hidden",
+          visibility: onHow ? "visible" : "hidden",
         }}
         aria-label="How it works"
       >
@@ -895,9 +653,9 @@ function TopBar({
   );
 }
 
-/* =========================================================================
-   HOME SCREEN
-   ========================================================================= */
+/* ============================================================
+   Home
+   ============================================================ */
 
 function HomeScreen({
   goInput,
@@ -923,8 +681,7 @@ function HomeScreen({
         />
 
         <h1 className="sl-wordmark">
-          Scam
-          <span style={{ color: "var(--brand)" }}>
+          Scam<span style={{ color: "var(--brand)" }}>
             Lens
           </span>
         </h1>
@@ -938,8 +695,8 @@ function HomeScreen({
         </p>
 
         <p className="sl-home-secondary">
-          Built for mobile-first protection, with
-          gaming and power-user scenarios in mind.
+          Built for mobile-first protection, with gaming
+          and power-user scenarios in mind.
         </p>
       </div>
 
@@ -954,9 +711,8 @@ function HomeScreen({
           </div>
 
           <div className="sl-gaming-card-text">
-            Detect fake tournament fees, gaming
-            rewards, account scams and suspicious
-            payment links.
+            Detect fake tournament fees, gaming rewards,
+            account scams and suspicious payment links.
           </div>
         </div>
       </div>
@@ -984,21 +740,19 @@ function HomeScreen({
           Prototype · iQOO Hackathon 2026
         </span>
 
-        <span className="sl-dot">
-          ·
-        </span>
+        <span className="sl-dot">·</span>
 
         <span>
-          FinTech &amp; Commerce
+          Gaming &amp; Power User Protection
         </span>
       </div>
     </div>
   );
 }
 
-/* =========================================================================
-   DEMO PICKER
-   ========================================================================= */
+/* ============================================================
+   Demo
+   ============================================================ */
 
 function DemoPickerScreen({
   pick,
@@ -1036,18 +790,13 @@ function DemoPickerScreen({
 
       <div className="sl-screen-body">
         <p className="sl-section-lead">
-          Pick a scenario — ScamLens runs the
-          full capture-to-action flow instantly,
-          no waiting on external services.
+          Pick a scenario — ScamLens runs the full
+          capture-to-action flow instantly.
         </p>
 
         <div className="sl-demo-list">
           {tiles.map(
-            ({
-              c,
-              hue,
-              desc,
-            }) => (
+            ({ c, hue, desc }) => (
               <button
                 key={c.id}
                 className={`sl-demo-tile sl-tone-${hue}`}
@@ -1077,9 +826,9 @@ function DemoPickerScreen({
   );
 }
 
-/* =========================================================================
-   INPUT SCREEN
-   ========================================================================= */
+/* ============================================================
+   Input
+   ============================================================ */
 
 function InputScreen({
   goBack,
@@ -1089,33 +838,59 @@ function InputScreen({
   const [text, setText] = useState("");
   const [scanning, setScanning] =
     useState(false);
+  const [imagePreview, setImagePreview] =
+    useState(null);
+
+  const fileRef = useRef(null);
 
   const examples = [
-    {
-      c: CASES.high,
-      hue: "danger",
-    },
-    {
-      c: CASES.gaming,
-      hue: "danger",
-    },
-    {
-      c: CASES.medium,
-      hue: "warn",
-    },
-    {
-      c: CASES.low,
-      hue: "safe",
-    },
+    { c: CASES.high, hue: "danger" },
+    { c: CASES.gaming, hue: "danger" },
+    { c: CASES.medium, hue: "warn" },
+    { c: CASES.low, hue: "safe" },
   ];
 
-  const simulateUpload = () => {
+  const handleScreenshot = () => {
+    fileRef.current?.click();
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      setImagePreview(reader.result);
+    };
+
+    reader.readAsDataURL(file);
+
+    /*
+      Prototype screenshot flow:
+      We don't perform OCR here.
+      Instead, selecting a screenshot demonstrates
+      the capture stage and uses a safe demo message.
+    */
+
     setScanning(true);
 
     setTimeout(() => {
-      setText(CASES.high.message);
+      setText(
+        "Congratulations! You have won ₹25,000. Pay ₹499 processing fee immediately to claim your prize."
+      );
+
       setScanning(false);
     }, 900);
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+
+    if (fileRef.current) {
+      fileRef.current.value = "";
+    }
   };
 
   return (
@@ -1130,7 +905,7 @@ function InputScreen({
         <div className="sl-capture-row">
           <button
             className="sl-capture-btn"
-            onClick={simulateUpload}
+            onClick={handleScreenshot}
           >
             <Upload size={17} />
             Upload screenshot
@@ -1140,13 +915,45 @@ function InputScreen({
             <ClipboardPaste size={17} />
             Paste message
           </div>
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="sl-hidden-input"
+            onChange={handleFileChange}
+          />
         </div>
+
+        {imagePreview && (
+          <div className="sl-image-preview">
+            <div className="sl-image-preview-head">
+              <div className="sl-image-preview-title">
+                <ImageIcon size={15} />
+                Screenshot captured
+              </div>
+
+              <button
+                className="sl-remove-image"
+                onClick={removeImage}
+                aria-label="Remove screenshot"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <img
+              src={imagePreview}
+              alt="Uploaded screenshot preview"
+              className="sl-preview-image"
+            />
+          </div>
+        )}
 
         {scanning && (
           <div className="sl-inline-scan">
             <span className="sl-inline-scan-dot" />
-            Simulating screenshot scan
-            (prototype demo)…
+            Extracting message content…
           </div>
         )}
 
@@ -1157,24 +964,19 @@ function InputScreen({
           onChange={(e) =>
             setText(e.target.value)
           }
-          rows={7}
+          rows={5}
         />
 
         <p
           className="sl-section-lead"
-          style={{
-            marginTop: 22,
-          }}
+          style={{ marginTop: 22 }}
         >
           Or try a ready-made example
         </p>
 
         <div className="sl-example-row">
           {examples.map(
-            ({
-              c,
-              hue,
-            }) => (
+            ({ c, hue }) => (
               <button
                 key={c.id}
                 className={`sl-example-chip sl-tone-${hue}`}
@@ -1194,9 +996,7 @@ function InputScreen({
           onClick={() =>
             runAnalysis(text)
           }
-          style={{
-            marginTop: 26,
-          }}
+          style={{ marginTop: 26 }}
         >
           Analyze message
           <ArrowRight size={18} />
@@ -1206,9 +1006,9 @@ function InputScreen({
   );
 }
 
-/* =========================================================================
-   ANALYZING SCREEN
-   ========================================================================= */
+/* ============================================================
+   Analyzing
+   ============================================================ */
 
 function AnalyzingScreen({
   onDone,
@@ -1217,7 +1017,6 @@ function AnalyzingScreen({
     "Checking payment signals…",
     "Checking urgency…",
     "Checking suspicious patterns…",
-    "Checking links and impersonation…",
     "Preparing risk assessment…",
   ];
 
@@ -1230,37 +1029,25 @@ function AnalyzingScreen({
 
     const tick = () => {
       i += 1;
-
       setActiveIdx(i);
 
       if (i < steps.length - 1) {
         timers.push(
-          setTimeout(
-            tick,
-            380
-          )
+          setTimeout(tick, 380)
         );
       } else {
         timers.push(
-          setTimeout(
-            onDone,
-            520
-          )
+          setTimeout(onDone, 520)
         );
       }
     };
 
     timers.push(
-      setTimeout(
-        tick,
-        260
-      )
+      setTimeout(tick, 260)
     );
 
     return () =>
-      timers.forEach(
-        clearTimeout
-      );
+      timers.forEach(clearTimeout);
   }, [onDone]);
 
   return (
@@ -1280,47 +1067,41 @@ function AnalyzingScreen({
       </h2>
 
       <div className="sl-checklist">
-        {steps.map(
-          (s, idx) => {
-            const state =
-              idx < activeIdx
-                ? "done"
-                : idx === activeIdx
-                ? "active"
-                : "pending";
+        {steps.map((s, idx) => {
+          const state =
+            idx < activeIdx
+              ? "done"
+              : idx === activeIdx
+              ? "active"
+              : "pending";
 
-            return (
-              <div
-                key={s}
-                className={`sl-check-row sl-check-${state}`}
-              >
-                <span className="sl-check-icon">
-                  {state ===
-                  "done" ? (
-                    <CheckCircle2
-                      size={16}
-                    />
-                  ) : state ===
-                    "active" ? (
-                    <span className="sl-check-spinner" />
-                  ) : (
-                    <span className="sl-check-empty" />
-                  )}
-                </span>
+          return (
+            <div
+              key={s}
+              className={`sl-check-row sl-check-${state}`}
+            >
+              <span className="sl-check-icon">
+                {state === "done" ? (
+                  <CheckCircle2 size={16} />
+                ) : state === "active" ? (
+                  <span className="sl-check-spinner" />
+                ) : (
+                  <span className="sl-check-empty" />
+                )}
+              </span>
 
-                {s}
-              </div>
-            );
-          }
-        )}
+              {s}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-/* =========================================================================
-   COUNT UP
-   ========================================================================= */
+/* ============================================================
+   Counter
+   ============================================================ */
 
 function useCountUp(
   target,
@@ -1330,8 +1111,7 @@ function useCountUp(
   const [val, setVal] =
     useState(0);
 
-  const rafRef =
-    useRef();
+  const rafRef = useRef();
 
   useEffect(() => {
     if (!active) return;
@@ -1345,8 +1125,7 @@ function useCountUp(
     const step = (now) => {
       const p = Math.min(
         1,
-        (now - start) /
-          duration
+        (now - start) / duration
       );
 
       setVal(
@@ -1357,9 +1136,7 @@ function useCountUp(
 
       if (p < 1) {
         rafRef.current =
-          requestAnimationFrame(
-            step
-          );
+          requestAnimationFrame(step);
       }
     };
 
@@ -1370,18 +1147,14 @@ function useCountUp(
       cancelAnimationFrame(
         rafRef.current
       );
-  }, [
-    target,
-    active,
-    duration,
-  ]);
+  }, [target, active, duration]);
 
   return val;
 }
 
-/* =========================================================================
-   RISK GAUGE
-   ========================================================================= */
+/* ============================================================
+   Risk Gauge
+   ============================================================ */
 
 function RiskGauge({
   score,
@@ -1391,33 +1164,28 @@ function RiskGauge({
     useState(false);
 
   useEffect(() => {
-    const t =
-      setTimeout(
-        () => setMounted(true),
-        60
-      );
-
-    return () =>
-      clearTimeout(t);
-  }, []);
-
-  const count =
-    useCountUp(
-      score,
-      mounted,
-      1100
+    const t = setTimeout(
+      () => setMounted(true),
+      60
     );
 
+    return () => clearTimeout(t);
+  }, []);
+
+  const count = useCountUp(
+    score,
+    mounted,
+    1100
+  );
+
   const r = 66;
+
   const circ =
     2 * Math.PI * r;
 
   const offset =
     circ -
-    (Math.min(
-      score,
-      100
-    ) /
+    (Math.min(score, 100) /
       100) *
       circ;
 
@@ -1482,9 +1250,9 @@ function RiskGauge({
   );
 }
 
-/* =========================================================================
-   RESULT SCREEN
-   ========================================================================= */
+/* ============================================================
+   Result
+   ============================================================ */
 
 function ResultScreen({
   result,
@@ -1504,12 +1272,10 @@ function ResultScreen({
   useEffect(() => {
     setShowReasons(false);
 
-    const t =
-      setTimeout(
-        () =>
-          setShowReasons(true),
-        550
-      );
+    const t = setTimeout(
+      () => setShowReasons(true),
+      550
+    );
 
     return () =>
       clearTimeout(t);
@@ -1529,8 +1295,7 @@ function ResultScreen({
           style={{
             background:
               accent.soft,
-            color:
-              accent.fg,
+            color: accent.fg,
             borderColor:
               `${accent.fg}33`,
           }}
@@ -1559,23 +1324,20 @@ function ResultScreen({
               {result.reasons.map(
                 (r, idx) => {
                   const Icon =
-                    ICONS[
-                      r.icon
-                    ] ||
+                    ICONS[r.icon] ||
                     AlertTriangle;
 
                   return (
                     <div
-                      key={
-                        r.label
-                      }
+                      key={r.label}
                       className={`sl-reason-row ${
                         showReasons
                           ? "sl-reason-in"
                           : ""
                       }`}
                       style={{
-                        transitionDelay: `${idx * 90}ms`,
+                        transitionDelay:
+                          `${idx * 90}ms`,
                       }}
                     >
                       <span
@@ -1587,9 +1349,7 @@ function ResultScreen({
                             accent.soft,
                         }}
                       >
-                        <Icon
-                          size={14}
-                        />
+                        <Icon size={14} />
                       </span>
 
                       {r.label}
@@ -1604,7 +1364,6 @@ function ResultScreen({
         <div className="sl-ai-block">
           <div className="sl-ai-block-head">
             <Sparkles size={14} />
-
             ScamLens Intelligence —
             Explainable Analysis
           </div>
@@ -1638,9 +1397,9 @@ function ResultScreen({
   );
 }
 
-/* =========================================================================
-   HOW IT WORKS
-   ========================================================================= */
+/* ============================================================
+   How it works
+   ============================================================ */
 
 function HowScreen({
   goBack,
@@ -1655,8 +1414,8 @@ function HowScreen({
       d: "Text is prepared for deterministic analysis.",
     },
     {
-      t: "Signal engine",
-      d: "Heuristic checks identify payment, urgency, prize, credential, URL, impersonation, internship, certification, gaming and other suspicious patterns.",
+      t: "Signal detection",
+      d: "Payment, urgency, prize, credential, URL, impersonation, gaming and other suspicious patterns are checked.",
     },
     {
       t: "Explainable risk assessment",
@@ -1700,10 +1459,7 @@ function HowScreen({
                 <div className="sl-flow-num">
                   {String(
                     idx + 1
-                  ).padStart(
-                    2,
-                    "0"
-                  )}
+                  ).padStart(2, "0")}
                 </div>
 
                 <div className="sl-flow-line" />
@@ -1726,9 +1482,9 @@ function HowScreen({
   );
 }
 
-/* =========================================================================
-   APP
-   ========================================================================= */
+/* ============================================================
+   ROOT
+   ============================================================ */
 
 export default function App() {
   const [screen, setScreen] =
@@ -1741,42 +1497,25 @@ export default function App() {
     useState(null);
 
   const startAnalysis =
-    useCallback(
-      (source) => {
-        const caseObj =
-          typeof source ===
-          "string"
-            ? analyzeCustomText(
-                source
-              )
-            : source;
+    useCallback((source) => {
+      const caseObj =
+        typeof source === "string"
+          ? analyzeCustomText(source)
+          : source;
 
-        setPendingCase(
-          caseObj
-        );
-
-        setScreen(
-          "analyzing"
-        );
-      },
-      []
-    );
+      setPendingCase(caseObj);
+      setScreen("analyzing");
+    }, []);
 
   const finishAnalysis =
     useCallback(() => {
-      setResult(
-        pendingCase
-      );
-
-      setScreen(
-        "result"
-      );
+      setResult(pendingCase);
+      setScreen("result");
     }, [pendingCase]);
 
   return (
     <div className="sl-app-bg">
       <style>{`
-
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
 
         .sl-app-bg {
@@ -1784,34 +1523,25 @@ export default function App() {
           --surface:#111A2C;
           --surface-2:#16213A;
           --border:rgba(255,255,255,0.08);
-
           --text-1:#EEF2FA;
           --text-2:#93A0BC;
           --text-3:#5B6584;
-
           --brand:#5B8CFF;
           --brand-soft:rgba(91,140,255,0.14);
-
           --safe:#2FD9A6;
           --safe-soft:rgba(47,217,166,0.14);
-
           --warn:#F5B833;
           --warn-soft:rgba(245,184,51,0.14);
-
           --danger:#FF5D6C;
           --danger-soft:rgba(255,93,108,0.14);
 
           font-family:'Inter',sans-serif;
-
           min-height:680px;
           width:100%;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           padding:28px 12px;
-
           background:
             radial-gradient(
               circle at 18% 8%,
@@ -1824,7 +1554,6 @@ export default function App() {
               transparent 45%
             ),
             var(--ink);
-
           box-sizing:border-box;
         }
 
@@ -1837,26 +1566,19 @@ export default function App() {
           max-width:380px;
           height:780px;
           max-height:92vh;
-
           background:
             linear-gradient(
               180deg,
               var(--surface) 0%,
               var(--ink) 100%
             );
-
           border-radius:40px;
-
           border:1px solid var(--border);
-
           box-shadow:
             0 40px 90px -30px rgba(0,0,0,0.7),
             0 0 0 8px rgba(255,255,255,0.02);
-
           overflow:hidden;
-
           position:relative;
-
           display:flex;
           flex-direction:column;
         }
@@ -1865,16 +1587,9 @@ export default function App() {
           display:flex;
           align-items:center;
           justify-content:space-between;
-
-          padding:
-            14px 26px 4px;
-
+          padding:14px 26px 4px;
           color:var(--text-1);
-
-          font-family:
-            'JetBrains Mono',
-            monospace;
-
+          font-family:'JetBrains Mono',monospace;
           font-size:12px;
         }
 
@@ -1897,27 +1612,19 @@ export default function App() {
           font-weight:600;
           font-size:14.5px;
           color:var(--text-1);
-          letter-spacing:0.2px;
         }
 
         .sl-iconbtn {
           width:34px;
           height:34px;
-
           border-radius:11px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           background:var(--surface-2);
-
           border:1px solid var(--border);
-
           color:var(--text-1);
-
           cursor:pointer;
-
           transition:
             background .15s ease,
             transform .15s ease;
@@ -1952,7 +1659,6 @@ export default function App() {
             opacity:0;
             transform:translateY(6px);
           }
-
           to {
             opacity:1;
             transform:none;
@@ -1987,7 +1693,6 @@ export default function App() {
           font-size:30px;
           color:var(--text-1);
           margin:4px 0 0;
-          letter-spacing:-0.02em;
         }
 
         .sl-tagline {
@@ -2018,14 +1723,10 @@ export default function App() {
           display:flex;
           align-items:flex-start;
           gap:11px;
-
           margin:4px 0 8px;
           padding:13px 14px;
-
           border-radius:16px;
-
           background:var(--surface-2);
-
           border:1px solid rgba(91,140,255,0.22);
         }
 
@@ -2033,16 +1734,12 @@ export default function App() {
           width:30px;
           height:30px;
           flex-shrink:0;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           border-radius:10px;
-
           color:var(--brand);
           background:var(--brand-soft);
-
           border:1px solid rgba(91,140,255,0.25);
         }
 
@@ -2072,16 +1769,14 @@ export default function App() {
           align-items:center;
           justify-content:center;
           gap:6px;
-
           color:var(--text-3);
-
           font-size:11px;
-
           font-family:'JetBrains Mono',monospace;
+          text-align:center;
         }
 
         .sl-dot {
-          opacity:0.5;
+          opacity:.5;
         }
 
         /* BUTTONS */
@@ -2091,26 +1786,20 @@ export default function App() {
           align-items:center;
           justify-content:center;
           gap:8px;
-
           font-family:'Space Grotesk',sans-serif;
           font-weight:600;
           font-size:14.5px;
-
           padding:15px 20px;
-
           border-radius:16px;
           border:1px solid transparent;
-
           cursor:pointer;
-
           transition:
             transform .15s ease,
-            filter .15s ease,
-            background .15s ease;
+            filter .15s ease;
         }
 
         .sl-btn:active {
-          transform:scale(0.98);
+          transform:scale(.98);
         }
 
         .sl-btn-block {
@@ -2124,12 +1813,10 @@ export default function App() {
               var(--brand),
               #4169E1
             );
-
           color:#fff;
-
           box-shadow:
             0 12px 24px -10px
-            rgba(91,140,255,0.55);
+            rgba(91,140,255,.55);
         }
 
         .sl-btn-primary:hover {
@@ -2137,7 +1824,7 @@ export default function App() {
         }
 
         .sl-btn-primary:disabled {
-          opacity:0.35;
+          opacity:.35;
           cursor:not-allowed;
           box-shadow:none;
         }
@@ -2146,10 +1833,6 @@ export default function App() {
           background:var(--surface-2);
           color:var(--text-1);
           border-color:var(--border);
-        }
-
-        .sl-btn-ghost:hover {
-          background:rgba(255,255,255,0.08);
         }
 
         /* INPUT */
@@ -2161,111 +1844,119 @@ export default function App() {
 
         .sl-capture-btn {
           flex:1;
-
           display:flex;
           align-items:center;
           justify-content:center;
           gap:7px;
-
           padding:13px 10px;
-
           border-radius:14px;
-
           border:1px solid var(--border);
-
           background:var(--surface-2);
-
           color:var(--text-2);
-
-          font-size:13px;
+          font-size:12px;
           font-weight:600;
-
           font-family:'Space Grotesk',sans-serif;
-
           cursor:pointer;
         }
 
         .sl-capture-btn-active {
           color:var(--brand);
-
-          border-color:
-            rgba(91,140,255,0.5);
-
-          background:
-            var(--brand-soft);
-
+          border-color:rgba(91,140,255,.5);
+          background:var(--brand-soft);
           cursor:default;
+        }
+
+        .sl-hidden-input {
+          display:none;
         }
 
         .sl-inline-scan {
           display:flex;
           align-items:center;
           gap:8px;
-
           margin-top:12px;
-
           font-size:12.5px;
           color:var(--brand);
-
           font-family:'JetBrains Mono',monospace;
         }
 
         .sl-inline-scan-dot {
           width:7px;
           height:7px;
-
           border-radius:50%;
-
           background:var(--brand);
-
-          animation:
-            sl-pulse 0.9s
-            ease-in-out infinite;
+          animation:sl-pulse .9s ease-in-out infinite;
         }
 
         @keyframes sl-pulse {
-          0%,100% {
-            opacity:0.35;
-          }
+          0%,100% { opacity:.35; }
+          50% { opacity:1; }
+        }
 
-          50% {
-            opacity:1;
-          }
+        .sl-image-preview {
+          margin-top:14px;
+          border:1px solid var(--border);
+          background:var(--surface-2);
+          border-radius:16px;
+          padding:10px;
+        }
+
+        .sl-image-preview-head {
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          margin-bottom:8px;
+        }
+
+        .sl-image-preview-title {
+          display:flex;
+          align-items:center;
+          gap:6px;
+          color:var(--brand);
+          font-size:11.5px;
+          font-family:'Space Grotesk',sans-serif;
+          font-weight:700;
+        }
+
+        .sl-remove-image {
+          width:28px;
+          height:28px;
+          border-radius:9px;
+          border:1px solid var(--border);
+          background:rgba(255,255,255,.04);
+          color:var(--text-2);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          cursor:pointer;
+        }
+
+        .sl-preview-image {
+          display:block;
+          width:100%;
+          max-height:160px;
+          object-fit:contain;
+          border-radius:10px;
+          background:#080B12;
         }
 
         .sl-textarea {
           margin-top:16px;
-
           width:100%;
-
           resize:none;
-
           background:var(--surface-2);
-
-          border:
-            1px solid var(--border);
-
+          border:1px solid var(--border);
           border-radius:16px;
-
           padding:14px 16px;
-
           color:var(--text-1);
-
           font-size:13.5px;
-
           line-height:1.55;
-
           font-family:'Inter',sans-serif;
-
           outline:none;
-
-          transition:
-            border-color .15s ease;
         }
 
         .sl-textarea:focus {
-          border-color:
-            rgba(91,140,255,0.6);
+          border-color:rgba(91,140,255,.6);
         }
 
         .sl-textarea::placeholder {
@@ -2276,7 +1967,6 @@ export default function App() {
           color:var(--text-2);
           font-size:12.5px;
           margin:4px 0 12px;
-          line-height:1.5;
         }
 
         .sl-example-row {
@@ -2289,33 +1979,28 @@ export default function App() {
           font-family:'Space Grotesk',sans-serif;
           font-size:12px;
           font-weight:600;
-
           padding:9px 13px;
-
           border-radius:100px;
-
           border:1px solid;
-
           cursor:pointer;
-
           background:transparent;
         }
 
         .sl-tone-danger {
           color:var(--danger);
-          border-color:rgba(255,93,108,0.4);
+          border-color:rgba(255,93,108,.4);
           background:var(--danger-soft);
         }
 
         .sl-tone-warn {
           color:var(--warn);
-          border-color:rgba(245,184,51,0.4);
+          border-color:rgba(245,184,51,.4);
           background:var(--warn-soft);
         }
 
         .sl-tone-safe {
           color:var(--safe);
-          border-color:rgba(47,217,166,0.4);
+          border-color:rgba(47,217,166,.4);
           background:var(--safe-soft);
         }
 
@@ -2329,18 +2014,12 @@ export default function App() {
 
         .sl-demo-tile {
           text-align:left;
-
           border-radius:18px;
           border:1px solid;
-
           padding:16px;
-
           cursor:pointer;
-
           background:var(--surface-2);
-
-          transition:
-            transform .15s ease;
+          transition:transform .15s ease;
         }
 
         .sl-demo-tile:hover {
@@ -2365,7 +2044,6 @@ export default function App() {
           font-size:12.5px;
           margin:10px 0 4px;
           line-height:1.5;
-          opacity:0.9;
         }
 
         .sl-demo-tile-desc {
@@ -2386,14 +2064,11 @@ export default function App() {
 
         .sl-scan-ring-wrap {
           position:relative;
-
           width:120px;
           height:120px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           margin-bottom:6px;
         }
 
@@ -2401,7 +2076,7 @@ export default function App() {
         .sl-scan-ring-mid {
           position:absolute;
           border-radius:50%;
-          border:1.5px dashed rgba(91,140,255,0.35);
+          border:1.5px dashed rgba(91,140,255,.35);
         }
 
         .sl-scan-ring-outer {
@@ -2412,17 +2087,15 @@ export default function App() {
         .sl-scan-ring-mid {
           width:86px;
           height:86px;
-          border-color:rgba(91,140,255,0.5);
+          border-color:rgba(91,140,255,.5);
         }
 
         .sl-spin-slow {
-          animation:
-            sl-spin 5s linear infinite;
+          animation:sl-spin 5s linear infinite;
         }
 
         .sl-spin-rev {
-          animation:
-            sl-spin 3.4s linear infinite reverse;
+          animation:sl-spin 3.4s linear infinite reverse;
         }
 
         @keyframes sl-spin {
@@ -2443,25 +2116,17 @@ export default function App() {
           display:flex;
           flex-direction:column;
           gap:11px;
-
           width:100%;
-          max-width:280px;
+          max-width:260px;
         }
 
         .sl-check-row {
           display:flex;
           align-items:center;
           gap:10px;
-
           font-size:12.5px;
-
           font-family:'JetBrains Mono',monospace;
-
           color:var(--text-3);
-
-          transition:
-            color .2s ease;
-
           text-align:left;
         }
 
@@ -2476,40 +2141,27 @@ export default function App() {
         .sl-check-icon {
           width:16px;
           height:16px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           flex-shrink:0;
         }
 
         .sl-check-empty {
           width:7px;
           height:7px;
-
           border-radius:50%;
-
           background:var(--text-3);
-
-          opacity:0.5;
+          opacity:.5;
         }
 
         .sl-check-spinner {
           width:12px;
           height:12px;
-
           border-radius:50%;
-
-          border:
-            2px solid
-            rgba(91,140,255,0.25);
-
-          border-top-color:
-            var(--brand);
-
-          animation:
-            sl-spin 0.7s linear infinite;
+          border:2px solid rgba(91,140,255,.25);
+          border-top-color:var(--brand);
+          animation:sl-spin .7s linear infinite;
         }
 
         /* RESULT */
@@ -2523,39 +2175,31 @@ export default function App() {
           font-family:'Space Grotesk',sans-serif;
           font-weight:700;
           font-size:13px;
-          letter-spacing:0.06em;
-
+          letter-spacing:.06em;
           padding:9px 18px;
-
           border-radius:100px;
-
           border:1px solid;
-
           margin-bottom:18px;
         }
 
         .sl-gauge-wrap {
           position:relative;
-
           width:168px;
           height:168px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           margin-bottom:14px;
         }
 
         .sl-gauge-track {
           fill:none;
-          stroke:rgba(255,255,255,0.07);
+          stroke:rgba(255,255,255,.07);
           stroke-width:10;
         }
 
         .sl-gauge-center {
           position:absolute;
-
           display:flex;
           flex-direction:column;
           align-items:center;
@@ -2580,7 +2224,6 @@ export default function App() {
           font-size:11px;
           color:var(--text-2);
           margin-top:6px;
-          letter-spacing:0.04em;
           text-transform:uppercase;
         }
 
@@ -2588,11 +2231,8 @@ export default function App() {
           color:var(--text-1);
           font-size:14px;
           font-weight:500;
-
-          max-width:280px;
-
+          max-width:260px;
           margin:2px 0 22px;
-
           line-height:1.5;
         }
 
@@ -2606,9 +2246,7 @@ export default function App() {
           font-family:'Space Grotesk',sans-serif;
           font-size:11.5px;
           font-weight:700;
-
-          letter-spacing:0.1em;
-
+          letter-spacing:.1em;
           color:var(--text-3);
         }
 
@@ -2623,22 +2261,14 @@ export default function App() {
           display:flex;
           align-items:center;
           gap:10px;
-
           font-size:13px;
           color:var(--text-1);
-
           background:var(--surface-2);
-
           border:1px solid var(--border);
-
           border-radius:13px;
-
           padding:10px 12px;
-
           opacity:0;
-
           transform:translateX(-8px);
-
           transition:
             opacity .35s ease,
             transform .35s ease;
@@ -2652,31 +2282,20 @@ export default function App() {
         .sl-reason-icon {
           width:26px;
           height:26px;
-
           border-radius:9px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           flex-shrink:0;
         }
 
         .sl-ai-block {
           width:100%;
-
           text-align:left;
-
           background:var(--brand-soft);
-
-          border:
-            1px solid
-            rgba(91,140,255,0.28);
-
+          border:1px solid rgba(91,140,255,.28);
           border-radius:16px;
-
           padding:14px 16px;
-
           margin-bottom:16px;
         }
 
@@ -2684,16 +2303,11 @@ export default function App() {
           display:flex;
           align-items:center;
           gap:6px;
-
           color:var(--brand);
-
           font-family:'Space Grotesk',sans-serif;
-
           font-weight:700;
           font-size:11.5px;
-
-          letter-spacing:0.06em;
-
+          letter-spacing:.06em;
           text-transform:uppercase;
         }
 
@@ -2702,22 +2316,16 @@ export default function App() {
           font-size:12.5px;
           line-height:1.6;
           margin:8px 0 0;
-          opacity:0.92;
+          opacity:.92;
         }
 
         .sl-action-block {
           width:100%;
-
           text-align:left;
-
           background:var(--surface-2);
-
           border:1px solid var(--border);
-
           border-radius:16px;
-
           padding:14px 16px;
-
           margin-bottom:20px;
         }
 
@@ -2725,9 +2333,7 @@ export default function App() {
           font-family:'Space Grotesk',sans-serif;
           font-size:11.5px;
           font-weight:700;
-
-          letter-spacing:0.08em;
-
+          letter-spacing:.08em;
           color:var(--text-3);
         }
 
@@ -2735,9 +2341,7 @@ export default function App() {
           color:var(--text-1);
           font-size:13.5px;
           font-weight:500;
-
           margin:8px 0 0;
-
           line-height:1.5;
         }
 
@@ -2750,14 +2354,9 @@ export default function App() {
 
         .sl-flow-row {
           display:grid;
-
-          grid-template-columns:
-            30px 1fr;
-
+          grid-template-columns:30px 1fr;
           column-gap:14px;
-
           position:relative;
-
           padding-bottom:22px;
         }
 
@@ -2769,41 +2368,28 @@ export default function App() {
           font-family:'JetBrains Mono',monospace;
           font-size:11px;
           font-weight:700;
-
           color:var(--brand);
-
           background:var(--brand-soft);
-
-          border:
-            1px solid
-            rgba(91,140,255,0.35);
-
+          border:1px solid rgba(91,140,255,.35);
           border-radius:9px;
-
           width:30px;
           height:30px;
-
           display:flex;
           align-items:center;
           justify-content:center;
-
           z-index:1;
         }
 
         .sl-flow-line {
           position:absolute;
-
           left:14px;
           top:30px;
           bottom:0;
-
           width:1px;
-
           background:var(--border);
         }
 
-        .sl-flow-row:last-child
-        .sl-flow-line {
+        .sl-flow-row:last-child .sl-flow-line {
           display:none;
         }
 
@@ -2819,27 +2405,8 @@ export default function App() {
           color:var(--text-3);
           font-size:11.5px;
           margin-top:3px;
-          line-height:1.5;
+          line-height:1.45;
         }
-
-        /* MOBILE */
-
-        @media (max-width:500px) {
-          .sl-app-bg {
-            padding:0;
-            min-height:100vh;
-          }
-
-          .sl-phone {
-            max-width:none;
-            width:100%;
-            height:100vh;
-            max-height:none;
-            border-radius:0;
-            border:none;
-          }
-        }
-
       `}</style>
 
       <div className="sl-phone">
@@ -2886,9 +2453,7 @@ export default function App() {
 
         {screen === "analyzing" && (
           <AnalyzingScreen
-            onDone={
-              finishAnalysis
-            }
+            onDone={finishAnalysis}
           />
         )}
 
@@ -2897,19 +2462,13 @@ export default function App() {
             <ResultScreen
               result={result}
               goBack={() =>
-                setScreen(
-                  "input"
-                )
+                setScreen("input")
               }
               goHow={() =>
-                setScreen(
-                  "how"
-                )
+                setScreen("how")
               }
               goCheckAnother={() =>
-                setScreen(
-                  "input"
-                )
+                setScreen("input")
               }
             />
           )}
