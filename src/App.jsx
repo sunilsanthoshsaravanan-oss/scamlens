@@ -674,12 +674,6 @@ function HomeScreen({ goInput, goDemo, goHow }) {
           Try demo
         </button>
       </div>
-
-      <div className="sl-home-footer">
-        <span>Prototype · iQOO Hackathon 2026</span>
-        <span className="sl-dot">·</span>
-        <span>FinTech &amp; Commerce</span>
-      </div>
     </div>
   );
 }
@@ -1244,7 +1238,7 @@ export default function App() {
         .sl-gaming-card-title { color:var(--text-1); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12.5px; margin-bottom:3px; }
         .sl-gaming-card-text { color:var(--text-2); font-size:11px; line-height:1.45; }
         .sl-home-actions { display:flex; flex-direction:column; gap:12px; margin-bottom: 6px; }
-        .sl-home-footer { display:flex; align-items:center; justify-content:center; gap:6px; color: var(--text-3); font-size:11px; font-family:'JetBrains Mono',monospace; }
+        .sl-home-footer { display:flex; align-items:center; justify-content:center; gap:6px; color: var(--text-3); font-size:11px; font-family:'JetBrains Mono',monospace; padding: 12px 10px 4px; }
         .sl-dot { opacity:0.5; }
 
         /* Buttons */
@@ -1388,6 +1382,14 @@ export default function App() {
             <span>Home</span>
           </button>
         </div>
+
+        {screen === "home" && (
+          <div className="sl-home-footer">
+            <span>Prototype · iQOO Hackathon 2026</span>
+            <span className="sl-dot">·</span>
+            <span>FinTech &amp; Commerce</span>
+          </div>
+        )}
       </div>
     </div>
   );
