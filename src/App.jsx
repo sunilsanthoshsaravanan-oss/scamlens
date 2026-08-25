@@ -165,7 +165,7 @@ function analyzeCustomText(raw) {
   // 7. Brand impersonation — weight 20
   // Detect when specific bank/company names appear with formal customer greetings
   const bankNames = /hdfc|icici|axis|sbi|state bank|american express|bank of america|chase|wellsfargo|paypal|amazon|apple|microsoft|google|facebook|linkedin|uber|flipkart|whatsapp/i;
-  const formalGreeting = /dear (?:customer|user|member|valued customer|sir|madam)/i;
+  const formalGreeting = /dear (?:customer|user|member|valued customer|sir|madam|student|candidate|applicant|learner)/i;
   if (bankNames.test(text) && formalGreeting.test(text)) {
     signals.push({ label: "Brand impersonation", icon: "link", weight: 20 });
   }
@@ -190,6 +190,34 @@ function analyzeCustomText(raw) {
   // when combined with payment, prize, urgency, link, credential, or account signals.
   if (/\bbgmi\b|\bfree\s*fire\b|\bgaming\b|\btournament\b|\besports\b|\buc\b|\bdiamonds\b|game\s+account|gaming\s+account/i.test(text)) {
     signals.push({ label: "Gaming-related scam pattern", icon: "alert", weight: 18 });
+  }
+
+  // 12. Scarcity / soft-urgency pressure without digits — weight 12
+  // Catches phrasing like "limited slots", "nearing completion", "within the
+  // stipulated timeline" — real scarcity pressure that the digit-based
+  // urgency regex above (e.g. "within 3 days") doesn't cover.
+  if (/limited slots?|last date|nearing completion|stipulated time(line)?|hurry|only \d+ (seats?|slots?|spots?) left|closing soon|register (now|today)/i.test(text)) {
+    signals.push({ label: "Scarcity / soft urgency pressure", icon: "clock", weight: 12 });
+  }
+
+  // 13. Fee-based program with a discount/scholarship code — weight 22
+  // A very common pattern in fake internship/training scams targeting
+  // students: a "training fee" softened by an artificial scholarship or
+  // coupon code, often "subject to verification" with no real criteria.
+  if (/(training|registration|program|course)\s+fee|scholarship code|coupon code|discount code|concession.*fee|fee.*applicable/i.test(text)) {
+    signals.push({ label: "Fee-based program with discount code", icon: "rupee", weight: 22 });
+  }
+
+  // 14. Unverifiable brand-affiliation claim — weight 18
+  // Name-dropping a well-known company (Microsoft, Google, etc.) via vague
+  // language like "in collaboration with" or "certified fundamentals" next
+  // to a fee-based offer, without a formal greeting, is a common way scam
+  // programs borrow trust from real brands. This is independent of the
+  // stricter Brand impersonation check above (#7), which requires a formal
+  // "Dear Customer"-style greeting.
+  const vagueBrandClaim = /in collaboration with|in association with|powered by|certified fundamentals|co-branded/i;
+  if (bankNames.test(text) && vagueBrandClaim.test(text)) {
+    signals.push({ label: "Unverifiable brand-affiliation claim", icon: "info", weight: 18 });
   }
 
   // Check for legitimate transaction indicators
