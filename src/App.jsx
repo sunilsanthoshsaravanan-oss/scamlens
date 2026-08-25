@@ -441,13 +441,14 @@ async function getAIVerification(text, heuristicResult) {
 
 /* ------------------------------------------------------------------------
    On-device model — NPU-ready inference layer.
-   This is a genuine, small logistic-regression network, computed with real
-   TensorFlow.js tensor ops (matmul + sigmoid), running fully client-side
-   with zero network calls. It is intentionally lightweight: the same graph
-   exported to TensorFlow Lite would run via the NNAPI/QNN delegate on the
-   Snapdragon NPU in a native Android build, so this is an honest "NPU-ready"
-   architecture — not a claim that this browser demo touches NPU silicon
-   directly, which isn't possible from a web sandbox.
+   This is a genuine, small logistic-regression network (weighted sum +
+   sigmoid), computed in plain JavaScript, running fully client-side with
+   zero network calls and zero external ML dependency. It is intentionally
+   lightweight: these same weights, exported to TensorFlow Lite, would run
+   via the NNAPI/QNN delegate on the Snapdragon NPU in a native Android
+   build — so this is an honest "NPU-ready" architecture, not a claim that
+   this browser demo touches NPU silicon directly, which isn't possible
+   from a web sandbox.
    It sits alongside (not instead of) the deterministic heuristic score:
    the heuristic stays the source of truth for the displayed 0-100 risk
    score; this model gives an independent, offline confidence check.
@@ -458,33 +459,6 @@ async function getAIVerification(text, heuristicResult) {
 // sigmoid has a steep, well-separated decision boundary (a flat/near-zero
 // scale collapses everything toward ~50%, which is useless as a confidence
 // signal). Bias is tuned so zero detected signals sits near 0%, not 50%.
-const NPU_FEATURE_ORDER = [
-  { key: "unexpected payment", w: 3.0 },
-  { key: "urgency / manipulation", w: 1.5 },
-  { key: "prize bait", w: 2.0 },
-  { key: "credential", w: 2.5 },
-  { key: "kyc", w: 2.0 },
-  { key: "blocking", w: 2.0 },
-  { key: "impersonation", w: 2.0 },
-  { key: "url / link", w: 2.5 },
-  { key: "delivery", w: 1.5 },
-  { key: "financial instruction", w: 1.5 },
-  { key: "gaming", w: 1.8 },
-  { key: "scarcity", w: 1.2 },
-  { key: "fee-based program", w: 2.2 },
-  { key: "brand-affiliation", w: 1.8 },
-];
-
-/**
- * Lightweight on-device confidence check using plain JavaScript.
- *
- * This replaces the previous TensorFlow.js implementation so the browser
- * artifact has no unsupported ML dependency. The same logistic-regression
- * math (weighted sum + sigmoid) is small enough to run directly in JS.
- *
- * In a native Android build, these weights can be exported to a real
- * TensorFlow Lite model and delegated to NNAPI/QNN on supported hardware.
- */
 const NPU_FEATURE_ORDER = [
   { key: "unexpected payment", w: 3.0 },
   { key: "urgency / manipulation", w: 1.5 },
