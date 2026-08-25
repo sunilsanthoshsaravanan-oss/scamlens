@@ -594,6 +594,352 @@ function compressImageFile(file, { maxWidth = 1080, quality = 0.75, mimeType = "
   });
 }
 
+/**
+ * Client-side Error Level Analysis (ELA) — a lightweight, zero-dependency
+ * image-tampering heuristic built entirely on the HTML5 Canvas API, with no
+ * server round trip and no external libraries.
+ *
+ * The idea: a genuine, untouched region of a JPEG degrades predictably when
+ * the image is re-saved at a lower quality, because it was already part of
+ * the same original compression pass. A region that was pasted, cloned, or
+ * edited in afterwards (e.g. a doctored amount or transaction ID on a
+ * payment screenshot) was NOT part of that original pass, so it responds
+ * differently to the resave — typically showing up as a visibly brighter
+ * patch once the two versions are diffed. This is the same underlying
+ * principle used by forensic tools like FotoForensics, just run entirely
+ * in the browser.
+ *
+ * Pipeline:
+ *   1. Draw the source image onto a canvas at a capped working resolution.
+ *   2. Re-encode that canvas as a JPEG at a lower quality (`quality`,
+ *      default 50-70%) and reload the result — this is "the resave".
+ *   3. For every pixel, take the absolute per-channel difference between
+ *      the original and the resave, amplify it so faint compression noise
+ *      becomes visible, and write it into an output canvas as a heatmap.
+ *
+ * @param {File|Blob|HTMLImageElement} source - the image to analyze
+ * @param {Object} [options]
+ * @param {number} [options.quality=0.6] - JPEG re-save quality, 0-1 (use ~0.5-0.7)
+ * @param {number} [options.amplify=14] - multiplier applied to each pixel's
+ *   diff so low-magnitude compression error becomes visible as a heatmap
+ * @param {number} [options.maxWidth=900] - caps the working resolution so the
+ *   per-pixel diff loop stays fast even on large phone screenshots
+ * @returns {Promise<{
+ *   dataUrl: string,       // the ELA heatmap, ready to drop into <img src>
+ *   canvas: HTMLCanvasElement, // the same heatmap as a live canvas element
+ *   width: number,
+ *   height: number,
+ *   meanDiff: number,      // 0-255 average error level across the image
+ *   maxDiff: number,       // 0-255 single brightest error pixel found
+ *   hotspotRatio: number,  // 0-1 fraction of pixels above a "hot" threshold
+ * }>}
+ */
+function generateELA(source, options = {}) {
+  const { quality = 0.6, amplify = 14, maxWidth = 900 } = options;
+
+  const loadImage = (src) =>
+    new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => rej(new Error("Could not load image for ELA"));
+      img.src = src;
+    });
+
+  return (async () => {
+    const isBlobLike = typeof Blob !== "undefined" && source instanceof Blob;
+    const objectUrl = isBlobLike ? URL.createObjectURL(source) : null;
+
+    try {
+      const img =
+        source instanceof HTMLImageElement ? source : await loadImage(objectUrl);
+
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      // 1. Original pass — draw the source at the working resolution.
+      const originalCanvas = document.createElement("canvas");
+      originalCanvas.width = width;
+      originalCanvas.height = height;
+      const originalCtx = originalCanvas.getContext("2d");
+      if (!originalCtx) throw new Error("Canvas 2D context unavailable");
+      originalCtx.drawImage(img, 0, 0, width, height);
+      const originalData = originalCtx.getImageData(0, 0, width, height);
+
+      // 2. Resave pass — re-encode at a lower JPEG quality, then reload it.
+      const resaveDataUrl = originalCanvas.toDataURL("image/jpeg", quality);
+      const resaveImg = await loadImage(resaveDataUrl);
+      const resaveCanvas = document.createElement("canvas");
+      resaveCanvas.width = width;
+      resaveCanvas.height = height;
+      const resaveCtx = resaveCanvas.getContext("2d");
+      resaveCtx.drawImage(resaveImg, 0, 0, width, height);
+      const resaveData = resaveCtx.getImageData(0, 0, width, height);
+
+      // 3. Diff pass — per-pixel absolute difference, amplified into a heatmap.
+      const outCanvas = document.createElement("canvas");
+      outCanvas.width = width;
+      outCanvas.height = height;
+      const outCtx = outCanvas.getContext("2d");
+      const outData = outCtx.createImageData(width, height);
+
+      const a = originalData.data;
+      const b = resaveData.data;
+      const out = outData.data;
+
+      const HOT_THRESHOLD = 40; // on the amplified 0-255 scale
+      let sumDiff = 0;
+      let maxPixelDiff = 0;
+      let hotPixels = 0;
+
+      for (let i = 0; i < a.length; i += 4) {
+        const dr = Math.abs(a[i] - b[i]);
+        const dg = Math.abs(a[i + 1] - b[i + 1]);
+        const db = Math.abs(a[i + 2] - b[i + 2]);
+        const amplified = Math.min(255, ((dr + dg + db) / 3) * amplify);
+
+        out[i] = amplified;
+        out[i + 1] = amplified;
+        out[i + 2] = amplified;
+        out[i + 3] = 255;
+
+        sumDiff += amplified;
+        if (amplified > maxPixelDiff) maxPixelDiff = amplified;
+        if (amplified > HOT_THRESHOLD) hotPixels += 1;
+      }
+
+      outCtx.putImageData(outData, 0, 0);
+
+      const pixelCount = a.length / 4;
+      return {
+        dataUrl: outCanvas.toDataURL("image/png"),
+        canvas: outCanvas,
+        width,
+        height,
+        meanDiff: Math.round((sumDiff / pixelCount) * 10) / 10,
+        maxDiff: Math.round(maxPixelDiff),
+        hotspotRatio: Math.round((hotPixels / pixelCount) * 1000) / 1000,
+      };
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+  })();
+}
+
+/**
+ * Default sampling regions for the forensic scorer below, expressed as
+ * fractions of the image's width/height (x, y, w, h all in 0-1). These
+ * approximate where a confirmation badge, the headline amount, and the
+ * transaction ID / reference row typically sit on UPI and wallet payment
+ * screenshots. It's a layout heuristic, not OCR-derived bounding boxes —
+ * good enough to sample "does this part of the receipt look locally
+ * re-touched" without needing text detection.
+ */
+const DEFAULT_RECEIPT_REGIONS = [
+  { key: "confirmation_badge", label: "Confirmation badge / status icon", rect: { x: 0.28, y: 0.06, w: 0.44, h: 0.16 } },
+  { key: "amount_text", label: "Amount text", rect: { x: 0.1, y: 0.24, w: 0.8, h: 0.18 } },
+  { key: "transaction_id", label: "Transaction ID / reference row", rect: { x: 0.08, y: 0.58, w: 0.84, h: 0.22 } },
+];
+
+/** Mean/max/hotspot stats for one rectangular slice of an ELA heatmap canvas. */
+function sampleRegionStats(canvas, width, height, rect) {
+  const ctx = canvas.getContext("2d");
+  const rx = Math.max(0, Math.round(rect.x * width));
+  const ry = Math.max(0, Math.round(rect.y * height));
+  const rw = Math.min(width - rx, Math.round(rect.w * width));
+  const rh = Math.min(height - ry, Math.round(rect.h * height));
+  if (rw <= 0 || rh <= 0) return null;
+
+  const { data } = ctx.getImageData(rx, ry, rw, rh);
+  const HOT_THRESHOLD = 40; // same amplified-scale threshold generateELA uses
+  let sum = 0;
+  let max = 0;
+  let hot = 0;
+  const pixelCount = data.length / 4;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i]; // heatmap is grayscale, R=G=B
+    sum += v;
+    if (v > max) max = v;
+    if (v > HOT_THRESHOLD) hot += 1;
+  }
+
+  return { mean: sum / pixelCount, max, hotspotRatio: hot / pixelCount, pixelCount };
+}
+
+/**
+ * Region-aware forensic scoring layered on top of an existing generateELA()
+ * result. Rather than only reporting a single whole-image error level, this
+ * checks whether the specific regions scammers most commonly edit on a
+ * payment receipt — the confirmation badge, the amount, the transaction ID —
+ * show meaningfully more compression error than the rest of the same image.
+ * A locally edited/pasted field breaks step with its surroundings in a way
+ * uniform re-compression of a genuine, untouched screenshot does not.
+ *
+ * Heuristic, not proof: JPEG blocking artifacts, busy backgrounds, and image
+ * scaling can all locally elevate error too. Treat the output as a prompt
+ * for manual verification, never as a fraud determination on its own.
+ *
+ * @param {Awaited<ReturnType<typeof generateELA>>} elaResult
+ * @param {typeof DEFAULT_RECEIPT_REGIONS} [regions]
+ * @returns {{
+ *   score: number,               // 0-100 visual forensic risk score
+ *   tags: string[],               // flag tags, e.g. SUSPICIOUS_FONT_MANIPULATION
+ *   regions: Array<{key:string,label:string,mean:number,max:number,hotspotRatio:number,excessRatio:number,anomalous:boolean}>,
+ * }}
+ */
+function scoreForensicRegions(elaResult, regions = DEFAULT_RECEIPT_REGIONS) {
+  if (!elaResult || !elaResult.canvas) return { score: 0, tags: [], regions: [] };
+
+  const { canvas, width, height, meanDiff: globalMean, hotspotRatio: globalHotspot } = elaResult;
+  // Floor avoids a near-zero global baseline (a very clean image) making the
+  // excess ratio blow up on ordinary rounding noise.
+  const globalBaseline = Math.max(globalMean, 3);
+
+  const regionStats = regions.map((r) => {
+    const stats = sampleRegionStats(canvas, width, height, r.rect);
+    if (!stats) return { ...r, mean: 0, max: 0, hotspotRatio: 0, excessRatio: 0, anomalous: false };
+    const excessRatio = stats.mean / globalBaseline;
+    // Anomalous = clearly hotter than the rest of THIS image (relative) and
+    // past an absolute floor (so globally-noisy images don't over-trigger).
+    const anomalous = excessRatio >= 1.6 && stats.mean >= 12;
+    return { ...r, ...stats, excessRatio, anomalous };
+  });
+
+  const tags = [];
+  let score = 0;
+
+  // Whole-image baseline contribution, consistent with the raw metrics the
+  // ELA panel already surfaces.
+  score += Math.min(40, globalMean * 1.1);
+  score += Math.min(20, globalHotspot * 100 * 0.6);
+
+  const anomalousRegions = regionStats.filter((r) => r.anomalous);
+  for (const r of anomalousRegions) {
+    // Sharp, high-peak, small-area anomaly reads like a single redrawn
+    // glyph or digit (e.g. one character of an amount edited in place).
+    if (r.max >= 180 && r.hotspotRatio < 0.35) {
+      tags.push("SUSPICIOUS_FONT_MANIPULATION");
+      score += 22;
+    } else {
+      // Broader, lower-peak anomaly across more of the region reads more
+      // like a whole element (badge, card background, row) pasted in.
+      tags.push("DOCTORED_RECEIPT_CANVAS");
+      score += 16;
+    }
+  }
+  if (anomalousRegions.some((r) => r.key === "confirmation_badge")) {
+    tags.push("ALTERED_CONFIRMATION_BADGE");
+    score += 10;
+  }
+  if (anomalousRegions.some((r) => r.key === "transaction_id")) {
+    tags.push("ALTERED_TRANSACTION_ID");
+    score += 10;
+  }
+  if (anomalousRegions.length === 0 && globalHotspot < 0.02 && globalMean < 8) {
+    tags.push("NO_LOCALIZED_TAMPERING_DETECTED");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  return {
+    score,
+    tags: Array.from(new Set(tags)),
+    regions: regionStats.map((r) => ({
+      key: r.key,
+      label: r.label,
+      mean: Math.round(r.mean * 10) / 10,
+      max: Math.round(r.max),
+      hotspotRatio: Math.round(r.hotspotRatio * 1000) / 1000,
+      excessRatio: Math.round(r.excessRatio * 100) / 100,
+      anomalous: r.anomalous,
+    })),
+  };
+}
+
+/**
+ * Synthetic ELA result for live pitch demos ("Hackathon Speed Mode"). Has
+ * the exact same shape as generateELA()'s return value, so it drops straight
+ * into the same forensic panel and scoreForensicRegions() call — it just
+ * skips loading, re-encoding, and diffing an actual image, so it resolves
+ * instantly with zero file I/O or network latency. Purely a presentation
+ * aid for stage demos: it never analyzes a real image, and every result it
+ * produces carries `simulated: true` so the UI can (and does) label it
+ * clearly instead of letting it pass as a real scan.
+ */
+function generateMockELA({ width = 360, height = 240 } = {}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+
+  // Low-level uniform noise across the whole frame, standing in for ordinary
+  // whole-image JPEG re-compression error.
+  for (let i = 0; i < data.length; i += 4) {
+    const noise = 4 + Math.random() * 5;
+    data[i] = noise;
+    data[i + 1] = noise;
+    data[i + 2] = noise;
+    data[i + 3] = 255;
+  }
+
+  // Bright synthetic "edit" hotspots over the amount + transaction ID
+  // regions, aligned with DEFAULT_RECEIPT_REGIONS so scoreForensicRegions()
+  // flags them exactly the way it would on a genuinely doctored receipt.
+  const hotRegions = DEFAULT_RECEIPT_REGIONS.filter(
+    (r) => r.key === "amount_text" || r.key === "transaction_id"
+  );
+  for (const region of hotRegions) {
+    const rx = Math.round(region.rect.x * width);
+    const ry = Math.round(region.rect.y * height);
+    const rw = Math.round(region.rect.w * width);
+    const rh = Math.round(region.rect.h * height);
+    for (let y = ry; y < ry + rh; y++) {
+      for (let x = rx; x < rx + rw; x++) {
+        const idx = (y * width + x) * 4;
+        if (idx < 0 || idx >= data.length) continue;
+        const v = 170 + Math.random() * 60;
+        data[idx] = v;
+        data[idx + 1] = v;
+        data[idx + 2] = v;
+        data[idx + 3] = 255;
+      }
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  // Derive summary metrics straight from the pixels just drawn — same
+  // formulas generateELA() uses — so nothing here is a hardcoded number.
+  const HOT_THRESHOLD = 40;
+  let sum = 0;
+  let max = 0;
+  let hot = 0;
+  const pixelCount = data.length / 4;
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i];
+    sum += v;
+    if (v > max) max = v;
+    if (v > HOT_THRESHOLD) hot += 1;
+  }
+
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    canvas,
+    width,
+    height,
+    meanDiff: Math.round((sum / pixelCount) * 10) / 10,
+    maxDiff: Math.round(max),
+    hotspotRatio: Math.round((hot / pixelCount) * 1000) / 1000,
+    simulated: true,
+  };
+}
+
 /* ------------------------------- UI atoms ------------------------------ */
 
 function LensMark({ size = 28, spinning = false, accent = "var(--brand)" }) {
@@ -744,6 +1090,10 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
   const [scanError, setScanError] = useState("");
   const [scanStatus, setScanStatus] = useState("");
   const [pasteError, setPasteError] = useState("");
+  const [elaResult, setElaResult] = useState(null);
+  const [elaRunning, setElaRunning] = useState(false);
+  const [forensicResult, setForensicResult] = useState(null);
+  const [speedMode, setSpeedMode] = useState(false);
   const fileRef = useRef(null);
 
   const examples = [
@@ -782,7 +1132,24 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
     }
   };
 
-  // Simulated step-by-step progress copy shown while a screenshot is being
+  // "Hackathon Speed Mode" — for live pitch demos. Skips the real upload,
+  // vision OCR call, and canvas-based ELA pass entirely and fills in an
+  // instant simulated result instead, so a presenter never has to stand
+  // around waiting on a network round trip or image processing on stage.
+  // Always clearly labeled as simulated in the UI (see sl-sim-badge below)
+  // so it's never mistaken for a real scan result.
+  const handleSimulateFlagged = () => {
+    setScanError("");
+    setPasteError("");
+    const mockCase = CASES.gaming;
+    const mockEla = generateMockELA();
+    setText(mockCase.message);
+    setElaResult(mockEla);
+    setForensicResult(scoreForensicRegions(mockEla));
+    setScanStatus("⚡ Simulated result — Speed Mode (no real image analyzed)");
+  };
+
+
   // read — purely a UI simulation driven by sequential setTimeout state
   // changes, so the user sees real-time-feeling progress instead of a
   // single generic spinner line. It does not gate or wait on the actual
@@ -801,10 +1168,30 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
     setScanError("");
     setScanStatus("");
     setScanning(true);
+    setElaResult(null);
+    setElaRunning(true);
+    setForensicResult(null);
 
     const stepTimers = SCAN_STEPS.map(({ delay, label }) =>
       setTimeout(() => setScanStatus(label), delay)
     );
+
+    // Client-side Error Level Analysis — zero-dependency tampering check
+    // that runs entirely in the browser via Canvas, in parallel with OCR.
+    // Fails soft: a failed/unsupported ELA pass never blocks the actual
+    // scam analysis, it just leaves the forensic panel hidden.
+    generateELA(file, { quality: 0.6, amplify: 14, maxWidth: 900 })
+      .then((result) => {
+        setElaResult(result);
+        // Region-aware forensic score/tags, derived from the same heatmap —
+        // no second image pass needed.
+        setForensicResult(scoreForensicRegions(result));
+      })
+      .catch(() => {
+        setElaResult(null);
+        setForensicResult(null);
+      })
+      .finally(() => setElaRunning(false));
 
     try {
       const originalSize = file.size;
@@ -847,6 +1234,23 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
     <div className="sl-screen">
       <TopBar title="Scan suspicious content" onBack={goBack} onHow={goHow} />
       <div className="sl-screen-body">
+        <div className="sl-speedmode-row">
+          <div className="sl-speedmode-label">
+            <span className="sl-speedmode-title">⚡ Hackathon Speed Mode</span>
+            <span className="sl-speedmode-sub">Instant simulated forensic results for live demos</span>
+          </div>
+          <button
+            type="button"
+            className={`sl-toggle${speedMode ? " sl-toggle-on" : ""}`}
+            role="switch"
+            aria-checked={speedMode}
+            aria-label="Hackathon Speed Mode"
+            onClick={() => setSpeedMode((v) => !v)}
+          >
+            <span className="sl-toggle-knob" />
+          </button>
+        </div>
+
         <div className="sl-capture-row">
           <button className="sl-capture-btn" onClick={triggerUpload} disabled={scanning}>
             <Upload size={17} />
@@ -856,6 +1260,12 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
             <ClipboardPaste size={17} />
             Paste text / link
           </button>
+          {speedMode && (
+            <button className="sl-capture-btn sl-capture-btn-sim" onClick={handleSimulateFlagged} disabled={scanning}>
+              <Sparkles size={17} />
+              Simulate flagged receipt
+            </button>
+          )}
           <input
             ref={fileRef}
             type="file"
@@ -888,6 +1298,70 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
           <div className="sl-inline-scan" style={{ color: "var(--warn)" }}>
             <Info size={13} />
             {scanError}
+          </div>
+        )}
+
+        {(elaRunning || elaResult) && (
+          <div className="sl-ela-panel">
+            <div className="sl-ela-head">
+              <span className="sl-ela-title">TAMPER CHECK · ERROR LEVEL ANALYSIS</span>
+              <span className="sl-ela-head-right">
+                {elaRunning && <span className="sl-inline-scan-dot" />}
+                {elaResult?.simulated && <span className="sl-sim-badge">SIMULATED</span>}
+              </span>
+            </div>
+            {elaRunning && !elaResult && (
+              <p className="sl-ela-note">Recompressing image on-device to check for edited regions…</p>
+            )}
+            {elaResult && (
+              <div className="sl-ela-body">
+                <img className="sl-ela-thumb" src={elaResult.dataUrl} alt="ELA tamper-check heatmap" />
+                <div className="sl-ela-stats">
+                  <p className="sl-ela-note">
+                    {elaResult.simulated
+                      ? "Simulated for demo purposes — no real image was analyzed. Toggle off Speed Mode to run a real scan."
+                      : "Brighter patches mean that region compressed differently from the rest of the image — a possible sign of local editing (e.g. an altered amount or ID)."}
+                  </p>
+                  <div className="sl-ela-metrics">
+                    <span>Mean error: <strong>{elaResult.meanDiff}</strong></span>
+                    <span>Peak error: <strong>{elaResult.maxDiff}</strong></span>
+                    <span>Hotspot area: <strong>{Math.round(elaResult.hotspotRatio * 100)}%</strong></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {forensicResult && (
+              <div className="sl-forensic-block">
+                <div className="sl-forensic-score-row">
+                  <span className="sl-forensic-score-label">Visual forensic risk</span>
+                  <span
+                    className={`sl-forensic-score-badge${
+                      forensicResult.score >= 60 ? " sl-tone-danger" : forensicResult.score >= 30 ? " sl-tone-warn" : " sl-tone-safe"
+                    }`}
+                  >
+                    {forensicResult.score}/100
+                  </span>
+                </div>
+                {forensicResult.tags.length > 0 && (
+                  <div className="sl-forensic-tags">
+                    {forensicResult.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={`sl-forensic-tag${tag === "NO_LOCALIZED_TAMPERING_DETECTED" ? " sl-tone-safe" : " sl-tone-danger"}`}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="sl-ela-note" style={{ marginTop: 8 }}>
+                  Checks the amount, transaction ID, and confirmation badge regions against the
+                  rest of the image for signs of local editing. A heuristic signal to prompt manual
+                  verification — not proof of tampering.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1360,13 +1834,38 @@ export default function App() {
         .sl-btn-ghost:hover { background: rgba(255,255,255,0.08); }
 
         /* Input screen */
-        .sl-capture-row { display:flex; gap:10px; }
+        .sl-capture-row { display:flex; gap:10px; flex-wrap:wrap; }
         .sl-capture-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding: 13px 10px; border-radius:14px; border:1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size:13px; font-weight:600; font-family:'Space Grotesk',sans-serif; cursor:pointer; }
         .sl-capture-btn-active { color: var(--brand); border-color: rgba(91,140,255,0.5); background: var(--brand-soft); cursor:default; }
+        .sl-capture-btn-sim { color: var(--brand); border-color: rgba(91,140,255,0.45); background: var(--brand-soft); flex-basis:100%; }
+
+        .sl-speedmode-row { display:flex; align-items:center; justify-content:space-between; gap:12px; background: var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:12px 14px; margin-bottom:14px; }
+        .sl-speedmode-label { display:flex; flex-direction:column; gap:2px; }
+        .sl-speedmode-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:12.5px; color: var(--text-1); }
+        .sl-speedmode-sub { font-size:10.5px; color: var(--text-3); }
+        .sl-sim-badge { font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; letter-spacing:0.06em; color: var(--brand); background: var(--brand-soft); border:1px solid rgba(91,140,255,0.4); border-radius:100px; padding:3px 8px; }
+        .sl-ela-head-right { display:flex; align-items:center; gap:8px; }
         .sl-hidden-input { display:none; }
         .sl-inline-scan { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color: var(--brand); font-family:'JetBrains Mono',monospace; }
         .sl-inline-scan-dot { width:7px; height:7px; border-radius:50%; background: var(--brand); animation: sl-pulse 0.9s ease-in-out infinite; }
         @keyframes sl-pulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
+
+        .sl-ela-panel { margin-top:14px; background: var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:14px 16px; }
+        .sl-ela-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .sl-ela-title { font-family:'Space Grotesk',sans-serif; font-size:11px; font-weight:700; letter-spacing:0.08em; color: var(--text-3); }
+        .sl-ela-body { display:flex; gap:12px; margin-top:10px; align-items:flex-start; }
+        .sl-ela-thumb { width:84px; height:84px; object-fit:cover; border-radius:10px; border:1px solid var(--border); flex-shrink:0; background:#000; }
+        .sl-ela-stats { flex:1; min-width:0; }
+        .sl-ela-note { color: var(--text-2); font-size:11px; line-height:1.5; margin:0; }
+        .sl-ela-metrics { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--text-1); }
+        .sl-ela-metrics strong { color: var(--brand); }
+
+        .sl-forensic-block { margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
+        .sl-forensic-score-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .sl-forensic-score-label { font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:600; color: var(--text-2); }
+        .sl-forensic-score-badge { font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; padding:5px 12px; border-radius:100px; border:1px solid; }
+        .sl-forensic-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+        .sl-forensic-tag { font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:600; letter-spacing:0.02em; padding:5px 9px; border-radius:8px; border:1px solid; }
 
         .sl-textarea { margin-top:16px; width:100%; resize:none; background: var(--surface-2); border:1px solid var(--border); border-radius:16px; padding:14px 16px; color: var(--text-1); font-size:13.5px; line-height:1.55; font-family:'Inter',sans-serif; outline:none; transition:border-color .15s ease; }
         .sl-textarea:focus { border-color: rgba(91,140,255,0.6); }
