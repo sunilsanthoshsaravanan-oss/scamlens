@@ -1060,6 +1060,16 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
       });
 
       const extracted = await extractTextFromScreenshot(base64, mimeType);
+      const heuristic = analyzeCustomText(extracted);
+
+      const ai = await getAIVerification(extracted, heuristic);
+
+      runAnalysis({
+        ...heuristic,
+        explanation: ai.explanation,
+        recommendation: ai.recommendation,
+        aiVerified: true,
+        });
       const trimmed = (extracted || "").trim();
 
       // Real result is in — stop the simulated step progression.
