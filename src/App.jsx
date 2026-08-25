@@ -349,78 +349,171 @@ function analyzeCustomText(raw) {
 
 
 // ======================= GEMINI AI INTEGRATION =======================
-const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+// Vercel env vars: works whether the app is built with CRA (process.env.REACT_APP_*)
+// or Vite (import.meta.env.VITE_*). `typeof import.meta` is safe feature-detection
+// syntax in any ES module build (Vite, Webpack 5/CRA5) — it only ever falls back to
+// the empty string if neither is set, and only ever reads env vars, never a hardcoded key.
+const GEMINI_API_KEY =
+  (typeof process !== "undefined" && process.env && process.env.REACT_APP_GEMINI_API_KEY) ||
+  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) ||
+  "";
 
+const GEMINI_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+
+/**
+ * Calls Gemini 2.5 Flash with the given content parts and returns the parsed
+ * response JSON. Throws a specific, human-readable Error for every failure
+ * mode we can distinguish (missing key, invalid key, permission denied,
+ * rate limit, network failure, malformed response) so the UI never has to
+ * fall back to a generic "unavailable" message.
+ */
 async function callGemini(parts) {
   if (!GEMINI_API_KEY) {
-    throw new Error("Gemini API key is missing. Add REACT_APP_GEMINI_API_KEY in Vercel.");
+    throw new Error(
+      "Gemini API key is missing. Add REACT_APP_GEMINI_API_KEY (or VITE_GEMINI_API_KEY) in your Vercel project's Environment Variables, then redeploy."
+    );
   }
 
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-    {
+  let response;
+  try {
+    response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": GEMINI_API_KEY,
       },
-      body: JSON.stringify({
-        contents: [{ parts }],
-      }),
-    }
-  );
+      body: JSON.stringify({ contents: [{ parts }] }),
+    });
+  } catch (networkErr) {
+    console.error("Gemini network error:", networkErr);
+    throw new Error("Network error reaching Gemini — check your internet connection and try again.");
+  }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch (parseErr) {
+    throw new Error("Gemini returned an unreadable response. Please try again.");
+  }
 
   if (!response.ok) {
     console.error("Gemini API Error:", data);
-    throw new Error(data?.error?.message || "Gemini OCR request failed.");
+    const apiMessage = data?.error?.message || "";
+
+    if (response.status === 400 && /api key not valid|api_key_invalid/i.test(apiMessage)) {
+      throw new Error("Invalid Gemini API key. Double-check REACT_APP_GEMINI_API_KEY / VITE_GEMINI_API_KEY in Vercel.");
+    }
+    if (response.status === 403) {
+      throw new Error("Permission denied by Gemini API. Confirm the API key has Generative Language API access enabled.");
+    }
+    if (response.status === 404) {
+      throw new Error("Gemini model not found. The gemini-2.5-flash endpoint may be unavailable for this API key.");
+    }
+    if (response.status === 429) {
+      throw new Error("Gemini API rate limit reached. Wait a moment and try again.");
+    }
+    if (response.status >= 500) {
+      throw new Error("Gemini API is temporarily unavailable. Please try again shortly.");
+    }
+    throw new Error(apiMessage || `Gemini OCR request failed (HTTP ${response.status}).`);
+  }
+
+  if (data?.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked this request (${data.promptFeedback.blockReason}). Try a different screenshot.`);
   }
 
   return data;
 }
 
-async function extractTextFromScreenshot(base64Data, mediaType) {
+/** Pulls the plain-text answer out of a Gemini generateContent response. */
+function extractGeminiText(data) {
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+/** Strips ```json / ``` code fences Gemini sometimes wraps JSON answers in. */
+function stripCodeFences(raw) {
+  return raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+}
+
+/**
+ * Sends a screenshot to Gemini 2.5 Flash Vision and returns the extracted
+ * text. Works across WhatsApp/SMS/UPI receipt screenshots in English or
+ * Hindi. Throws a clear error if Gemini returns no readable text, or if its
+ * JSON response can't be parsed.
+ */
+async function extractTextFromScreenshot(base64Data, mimeType) {
   const data = await callGemini([
     {
-      text: `Extract all text from this screenshot and return ONLY JSON:
-{"extractedText":"..."}`,
+      text: `Extract ALL visible text from this screenshot exactly as it appears (this may be a WhatsApp chat, SMS, PhonePe/GPay/Paytm/UPI receipt, or Instagram/Telegram message, in English and/or Hindi). Return ONLY valid JSON in this exact format, with no extra commentary and no markdown code fences:
+{"extractedText": "..."}`,
     },
     {
       inline_data: {
-        mime_type: mediaType,
+        mime_type: mimeType,
         data: base64Data,
       },
     },
   ]);
 
-  const txt = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  return JSON.parse(txt.replace(/```json|```/g, "").trim()).extractedText;
+  const raw = stripCodeFences(extractGeminiText(data));
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    console.error("Gemini OCR JSON parse failure. Raw text:", raw);
+    throw new Error("Gemini OCR returned an unexpected format. Please try again with a clearer screenshot.");
+  }
+
+  const extractedText = (parsed?.extractedText || "").trim();
+  if (!extractedText) {
+    throw new Error("No text detected in this screenshot. Try a clearer or less cropped image.");
+  }
+  return extractedText;
 }
 
+/**
+ * Asks Gemini for a second opinion / explanation on top of the local
+ * heuristic score. Returns { explanation, recommendation, agrees, suggestedLevel }.
+ */
 async function getAIVerification(message, heuristicResult) {
   const data = await callGemini([
     {
-      text: `
+      text: `You are a fraud-detection assistant reviewing a message that a local heuristic engine has already scored.
+
 Message:
 ${message}
 
-Heuristic Score: ${heuristicResult.score}
-Risk Level: ${heuristicResult.level}
+Heuristic Score: ${heuristicResult?.score ?? "unknown"}
+Heuristic Risk Level: ${heuristicResult?.level ?? "unknown"}
 
-Return ONLY JSON:
+Return ONLY valid JSON in this exact format, with no extra commentary and no markdown code fences:
 {
- "explanation":"",
- "recommendation":"",
- "agrees":true,
- "suggestedLevel":"high"
-}
-`,
+ "explanation": "...",
+ "recommendation": "...",
+ "agrees": true,
+ "suggestedLevel": "low|medium|high"
+}`,
     },
   ]);
 
-  const txt = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  return JSON.parse(txt.replace(/```json|```/g, "").trim());
+  const raw = stripCodeFences(extractGeminiText(data));
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    console.error("Gemini verification JSON parse failure. Raw text:", raw);
+    throw new Error("Gemini returned an unexpected format for the AI verification step. Please try again.");
+  }
+
+  return {
+    explanation: parsed?.explanation || "",
+    recommendation: parsed?.recommendation || "",
+    agrees: typeof parsed?.agrees === "boolean" ? parsed.agrees : true,
+    suggestedLevel: parsed?.suggestedLevel || heuristicResult?.level || "medium",
+  };
 }
 // ===================== END GEMINI AI INTEGRATION =====================
 
@@ -1074,36 +1167,32 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
         mimeType: "image/jpeg",
       });
 
+      // extractTextFromScreenshot already throws a clear "No text detected"
+      // error itself if Gemini finds nothing readable, so by this point
+      // `extracted` is guaranteed non-empty.
       const extracted = await extractTextFromScreenshot(base64, mimeType);
-      const heuristic = analyzeCustomText(extracted);
+      const trimmed = extracted.trim();
 
-      const ai = await getAIVerification(extracted, heuristic);
+      const heuristic = analyzeCustomText(trimmed);
+      const ai = await getAIVerification(trimmed, heuristic);
+
+      // Real result is in — stop the simulated step progression before
+      // navigating away via runAnalysis.
+      stepTimers.forEach(clearTimeout);
+
+      setText(trimmed);
+      setScanStatus(`Compressed ${formatKB(originalSize)} → ${formatKB(blob.size)} · text extracted ✓`);
 
       runAnalysis({
         ...heuristic,
         explanation: ai.explanation,
         recommendation: ai.recommendation,
         aiVerified: true,
-        });
-      const trimmed = (extracted || "").trim();
-
-      // Real result is in — stop the simulated step progression.
-      stepTimers.forEach(clearTimeout);
-
-      // Empty/near-empty OCR guard: don't hand a blank or noise payload to
-      // the downstream LLM (getAIVerification) at all — short-circuit here
-      // with a clean client-side warning instead.
-      if (trimmed.length < 5) {
-        setText("");
-        setScanError("No readable text detected. Please upload a clear payment screenshot or message.");
-        setScanStatus("");
-      } else {
-        setText(trimmed);
-        setScanStatus(`Compressed ${formatKB(originalSize)} → ${formatKB(blob.size)} · text extracted ✓`);
-      }
+      });
     } catch (err) {
       stepTimers.forEach(clearTimeout);
-      console.error(err); setScanError(err.message || "Gemini OCR failed.");
+      console.error(err);
+      setScanError(err.message || "Gemini OCR failed.");
       setScanStatus("");
     } finally {
       setScanning(false);
