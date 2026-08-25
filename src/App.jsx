@@ -1094,8 +1094,7 @@ function ResultScreen({ result, goCheckAnother, goBack, goHow }) {
         {typeof result.npuConfidence === "number" && (
           <div className="sl-npu-badge">
             <span className="sl-npu-dot" />
-            On-device model: <strong>{result.npuConfidence}%</strong> confidence · runs fully offline,
-            zero network calls · NPU-ready (TensorFlow Lite delegate on native build)
+            On-device model: <strong>{result.npuConfidence}%</strong>
           </div>
         )}
 
