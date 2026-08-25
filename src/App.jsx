@@ -16,9 +16,7 @@ import {
   RefreshCw,
   Layers,
   PlayCircle,
-  Wifi,
-  BatteryFull,
-  Signal,
+  Home,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------
@@ -615,19 +613,6 @@ function LensMark({ size = 28, spinning = false, accent = "var(--brand)" }) {
   );
 }
 
-function StatusBar() {
-  return (
-    <div className="sl-statusbar">
-      <span className="sl-statustime">9:41</span>
-      <div className="sl-statusicons">
-        <Signal size={13} strokeWidth={2.4} />
-        <Wifi size={13} strokeWidth={2.4} />
-        <BatteryFull size={15} strokeWidth={2.2} />
-      </div>
-    </div>
-  );
-}
-
 function TopBar({ title, onBack, onHow }) {
   return (
     <div className="sl-topbar">
@@ -664,7 +649,6 @@ function HomeScreen({ goInput, goDemo, goHow }) {
       </div>
 
       <div className="sl-home-hero">
-        <LensMark size={64} accent="var(--brand)" />
         <h1 className="sl-wordmark">
           Scam<span style={{ color: "var(--brand)" }}>Lens</span>
         </h1>
@@ -674,7 +658,6 @@ function HomeScreen({ goInput, goDemo, goHow }) {
       </div>
 
       <div className="sl-gaming-card">
-        <div className="sl-gaming-card-icon"><PlayCircle size={17} /></div>
         <div>
           <div className="sl-gaming-card-title">Gaming Protection</div>
           <div className="sl-gaming-card-text">Detect fake tournament fees, gaming rewards, account scams and suspicious payment links.</div>
@@ -1229,20 +1212,20 @@ export default function App() {
         .sl-app-bg * { box-sizing: border-box; }
 
         .sl-phone {
-          width: 100%; max-width: 380px; height: 780px; max-height: 92vh;
-          background: linear-gradient(180deg, var(--surface) 0%, var(--ink) 100%);
-          border-radius: 40px; border: 1px solid var(--border);
-          box-shadow: 0 40px 90px -30px rgba(0,0,0,0.7), 0 0 0 8px rgba(255,255,255,0.02);
-          overflow: hidden; position: relative; display:flex; flex-direction:column;
+          width: 100%; max-width: 420px; min-height: 780px;
+          background: transparent;
+          overflow: visible; position: relative; display:flex; flex-direction:column;
         }
 
-        .sl-statusbar { display:flex; align-items:center; justify-content:space-between; padding: 14px 26px 4px; color: var(--text-1); font-family:'JetBrains Mono',monospace; font-size:12px; }
-        .sl-statusicons { display:flex; align-items:center; gap:6px; color: var(--text-1); }
-
-        .sl-topbar { display:flex; align-items:center; justify-content:space-between; padding: 6px 10px 2px; }
+        .sl-topbar { display:flex; align-items:center; justify-content:space-between; padding: 18px 10px 2px; }
         .sl-topbar-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; color: var(--text-1); letter-spacing:0.2px; }
         .sl-iconbtn { width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center; background: var(--surface-2); border:1px solid var(--border); color: var(--text-1); cursor:pointer; transition: background .15s ease, transform .15s ease; }
         .sl-iconbtn:hover { background: rgba(255,255,255,0.09); transform: translateY(-1px); }
+
+        .sl-bottomnav { display:flex; align-items:center; justify-content:center; padding: 10px 10px 22px; border-top: 1px solid var(--border); }
+        .sl-bottomnav-btn { display:flex; align-items:center; gap:7px; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color: var(--text-2); background: var(--surface-2); border:1px solid var(--border); border-radius:100px; padding:10px 22px; cursor:pointer; transition: background .15s ease, color .15s ease, transform .15s ease; }
+        .sl-bottomnav-btn:hover { background: rgba(255,255,255,0.09); transform: translateY(-1px); }
+        .sl-bottomnav-btn-active { color: var(--brand); border-color: rgba(91,140,255,0.5); background: var(--brand-soft); }
 
         .sl-screen { flex:1; display:flex; flex-direction:column; overflow-y:auto; animation: sl-fade-in .32s ease both; }
         .sl-screen::-webkit-scrollbar { display:none; }
@@ -1251,14 +1234,13 @@ export default function App() {
 
         /* Home */
         .sl-home { padding: 0 26px 26px; justify-content:space-between; }
-        .sl-home-top { display:flex; justify-content:flex-end; padding-top:8px; }
+        .sl-home-top { display:flex; justify-content:flex-end; padding-top:20px; }
         .sl-home-hero { display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px; margin-top: 18px; }
         .sl-wordmark { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:30px; color: var(--text-1); margin: 4px 0 0; letter-spacing: -0.02em; }
         .sl-tagline { font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:15px; color: var(--brand); margin:0; }
         .sl-home-desc { color: var(--text-2); font-size:13.5px; max-width: 240px; line-height:1.5; margin:2px 0 0; }
         .sl-home-secondary { color: var(--text-3); font-size:11.5px; max-width:270px; line-height:1.45; margin:0; }
-        .sl-gaming-card { display:flex; align-items:flex-start; gap:11px; margin: 4px 0 8px; padding:13px 14px; border-radius:16px; background: var(--surface-2); border:1px solid rgba(91,140,255,0.22); }
-        .sl-gaming-card-icon { width:30px; height:30px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:10px; color:var(--brand); background:var(--brand-soft); border:1px solid rgba(91,140,255,0.25); }
+        .sl-gaming-card { display:flex; align-items:flex-start; gap:11px; margin: 4px 0 8px; padding: 4px 2px; }
         .sl-gaming-card-title { color:var(--text-1); font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12.5px; margin-bottom:3px; }
         .sl-gaming-card-text { color:var(--text-2); font-size:11px; line-height:1.45; }
         .sl-home-actions { display:flex; flex-direction:column; gap:12px; margin-bottom: 6px; }
@@ -1363,8 +1345,6 @@ export default function App() {
       `}</style>
 
       <div className="sl-phone">
-        <StatusBar />
-
         {screen === "home" && (
           <HomeScreen
             goInput={() => setScreen("input")}
@@ -1397,6 +1377,17 @@ export default function App() {
         )}
 
         {screen === "how" && <HowScreen goBack={() => setScreen(result ? "result" : "home")} />}
+
+        <div className="sl-bottomnav">
+          <button
+            className={`sl-bottomnav-btn${screen === "home" ? " sl-bottomnav-btn-active" : ""}`}
+            onClick={() => setScreen("home")}
+            aria-label="Home"
+          >
+            <Home size={18} strokeWidth={2.2} />
+            <span>Home</span>
+          </button>
+        </div>
       </div>
     </div>
   );
