@@ -352,17 +352,27 @@ function analyzeCustomText(raw) {
 const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
 async function callGemini(parts) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Gemini API key is missing. Add REACT_APP_GEMINI_API_KEY in Vercel Environment Variables.");
+  }
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts }] })
+      body: JSON.stringify({ contents: [{ parts }] }),
     }
   );
 
-  if (!response.ok) throw new Error("Gemini API Error");
-  return await response.json();
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error("Gemini API Error:", data);
+    throw new Error(data?.error?.message || "Gemini API request failed");
+  }
+
+  return data;
 }
 
 async function extractTextFromScreenshot(base64Data, mediaType) {
@@ -1088,7 +1098,7 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
       }
     } catch (err) {
       stepTimers.forEach(clearTimeout);
-      setScanError("AI screenshot reading is unavailable right now — paste the message text instead.");
+      console.error(err); setScanError(err.message || "Gemini OCR failed.");
       setScanStatus("");
     } finally {
       setScanning(false);
