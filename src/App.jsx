@@ -728,6 +728,17 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
 
   const formatKB = (bytes) => `${(bytes / 1024).toFixed(0)}KB`;
 
+  // Simulated step-by-step progress copy shown while a screenshot is being
+  // read — purely a UI simulation driven by sequential setTimeout state
+  // changes, so the user sees real-time-feeling progress instead of a
+  // single generic spinner line. It does not gate or wait on the actual
+  // async work in handleFile below.
+  const SCAN_STEPS = [
+    { delay: 0, label: "Scanning image & extracting OCR text…" },
+    { delay: 1200, label: "Evaluating deterministic payment risk signals…" },
+    { delay: 2500, label: "Generating explainable risk assessment…" },
+  ];
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-uploading the same file later
@@ -736,6 +747,11 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
     setScanError("");
     setScanStatus("");
     setScanning(true);
+
+    const stepTimers = SCAN_STEPS.map(({ delay, label }) =>
+      setTimeout(() => setScanStatus(label), delay)
+    );
+
     try {
       const originalSize = file.size;
       // Compress before sending — a raw phone screenshot can be several MB,
@@ -746,13 +762,12 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
         quality: 0.75,
         mimeType: "image/jpeg",
       });
-      // Visible proof the compression step actually ran and shrank the
-      // file — useful for demoing this to a judge, not just trusting it
-      // happened silently.
-      setScanStatus(`Compressed ${formatKB(originalSize)} → ${formatKB(blob.size)} · reading with AI vision…`);
 
       const extracted = await extractTextFromScreenshot(base64, mimeType);
       const trimmed = (extracted || "").trim();
+
+      // Real result is in — stop the simulated step progression.
+      stepTimers.forEach(clearTimeout);
 
       // Empty/near-empty OCR guard: don't hand a blank or noise payload to
       // the downstream LLM (getAIVerification) at all — short-circuit here
@@ -766,6 +781,7 @@ function InputScreen({ goBack, goHow, runAnalysis }) {
         setScanStatus(`Compressed ${formatKB(originalSize)} → ${formatKB(blob.size)} · text extracted ✓`);
       }
     } catch (err) {
+      stepTimers.forEach(clearTimeout);
       setScanError("AI screenshot reading is unavailable right now — paste the message text instead.");
       setScanStatus("");
     } finally {
