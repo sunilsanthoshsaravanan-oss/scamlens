@@ -138,7 +138,7 @@ function analyzeCustomText(raw) {
   }
 
   // 2. Urgency/manipulation — weight 15
-  if (/immediately|urgent|within \d+ (hours?|days?)|do not delay|asap|act fast|right now|don't wait|hurry|unless you/i.test(text)) {
+  if (/immediately|urgent|within \d+ ?(minutes?|mins?|hours?|days?)|do not delay|asap|act fast|right now|don't wait|hurry|unless you|expires? (soon|in|within)/i.test(text)) {
     signals.push({ label: "Urgency / manipulation", icon: "clock", weight: 15 });
   }
 
@@ -202,7 +202,24 @@ function analyzeCustomText(raw) {
   } else if (signals.length === 0) {
     score = 24;
   } else {
-    score = Math.min(98, signals.reduce((s, x) => s + x.weight, 0));
+    let base = signals.reduce((s, x) => s + x.weight, 0);
+
+    // Combo bonus: some signal COMBINATIONS are far more dangerous than the
+    // sum of their parts, and the explanation logic already treats them
+    // that way (see below) — the score should agree, not undercount them.
+    const has = (kw) => signals.some((s) => s.label.toLowerCase().includes(kw));
+    let comboBonus = 0;
+    // Sharing an OTP/PIN/password "to claim/confirm" something is one of
+    // the single most dangerous real-world patterns (classic OTP-theft
+    // fraud) regardless of what else is present.
+    if (has("credential") && (has("prize") || has("urgency") || has("blocking") || has("impersonation"))) {
+      comboBonus = Math.max(comboBonus, 25);
+    }
+    // Impersonation + a threat/verification ask is textbook phishing.
+    if (has("impersonation") && (has("blocking") || has("verification") || has("kyc"))) {
+      comboBonus = Math.max(comboBonus, 15);
+    }
+    score = Math.min(98, base + comboBonus);
   }
 
   // Determine level
