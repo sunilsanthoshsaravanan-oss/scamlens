@@ -349,7 +349,7 @@ function analyzeCustomText(raw) {
 
 
 // ======================= GEMINI AI INTEGRATION =======================
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
 async function callGemini(parts) {
   const response = await fetch(
