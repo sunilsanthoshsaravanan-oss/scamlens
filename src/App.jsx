@@ -439,6 +439,13 @@ async function getAIVerification(text, heuristicResult) {
   return callClaudeJSON(messages, { maxTokens: 400 });
 }
 
+/* ------------------------------------------------------------------------
+   Local analysis layer.
+   The artifact-compatible browser prototype uses the deterministic heuristic
+   engine above. Native Android can later add a TensorFlow Lite / Snapdragon
+   NPU model without requiring TensorFlow.js in this artifact.
+------------------------------------------------------------------------- */
+
 /* ------------------------------- UI atoms ------------------------------ */
 
 function LensMark({ size = 28, spinning = false, accent = "var(--brand)" }) {
@@ -699,6 +706,7 @@ function AnalyzingScreen({ aiReady, onDone }) {
     "Checking payment signals…",
     "Checking urgency & suspicious patterns…",
     "Running local risk score…",
+    "Running local signal analysis…",
     "Consulting AI model for a second opinion…",
   ];
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -850,6 +858,7 @@ function ResultScreen({ result, goCheckAnother, goBack, goHow }) {
 
         <p className="sl-result-headline">{result.headline}</p>
 
+
         {result.reasons.length > 0 && (
           <div className="sl-reasons-block">
             <span className="sl-reasons-title">WHY?</span>
@@ -913,17 +922,18 @@ function HowScreen({ goBack }) {
     { t: "Capture", d: "Screenshot (read via Claude's vision model) or pasted message text is provided to ScamLens" },
     { t: "Extract", d: "For screenshots, an AI vision call transcribes the readable message text — no manual OCR setup needed" },
     { t: "Lightweight signal engine", d: "A fully offline, deterministic heuristic checks payment, urgency, prize, credential, URL, impersonation, gaming and other suspicious patterns instantly" },
+    { t: "Native NPU roadmap", d: "The current browser artifact uses the deterministic local signal engine. A future native Android build can add a trained TensorFlow Lite model with NNAPI/QNN delegation to the Snapdragon NPU." },
     { t: "0–100 risk score", d: "The heuristic score maps to low, medium, or high risk with zero network dependency, so it works even offline" },
     { t: "AI second opinion", d: "In parallel, the message and heuristic findings are sent to Claude for a natural-language explanation and a sanity check on the risk level" },
     { t: "Explainable result", d: "If the AI call succeeds it enriches the explanation; if not, the app falls back to the heuristic result and says so — never a faked AI answer" },
     { t: "Recommended action", d: "One concrete next step helps the user decide safely" },
-    { t: "Roadmap", d: "On-device Snapdragon NPU inference for the AI layer, multilingual (Hindi/Hinglish) detection, and direct SMS/notification ingestion" },
+    { t: "Roadmap", d: "Native Android build with real TFLite + Snapdragon NPU delegation, a trained (not hand-set) on-device model, multilingual (Hindi/Hinglish) detection, and direct SMS/notification ingestion" },
   ];
   return (
     <div className="sl-screen">
       <TopBar title="How it works" onBack={goBack} />
       <div className="sl-screen-body">
-        <p className="sl-section-lead">Hybrid analysis: an instant offline heuristic score, layered with a real AI second opinion — no bank integration in the current MVP.</p>
+        <p className="sl-section-lead">Two-layer analysis: an instant offline heuristic score and a real AI second opinion — with native Snapdragon NPU integration planned for the Android roadmap.</p>
         <div className="sl-flow">
           {flow.map((f, idx) => (
             <div className="sl-flow-row" key={f.t}>
@@ -953,6 +963,10 @@ export default function App() {
     // 1. Instant, fully offline heuristic score — always available, even
     //    with no network. This keeps ScamLens usable with zero latency.
     const caseObj = typeof source === "string" ? analyzeCustomText(source) : source;
+
+    // Local deterministic analysis is the source of truth for the 0–100 score.
+    caseObj.npuConfidence = null;
+
     setPendingCase(caseObj);
     setAiReady(false);
     setScreen("analyzing");
@@ -1129,6 +1143,8 @@ export default function App() {
         .sl-gauge-max { font-family:'JetBrains Mono',monospace; font-size:12px; color: var(--text-3); margin-top:2px; }
         .sl-gauge-label { font-family:'Space Grotesk',sans-serif; font-size:11px; color: var(--text-2); margin-top:6px; letter-spacing:0.04em; text-transform:uppercase; }
         .sl-result-headline { color: var(--text-1); font-size:14px; font-weight:500; max-width:260px; margin: 2px 0 22px; line-height:1.5; }
+        .sl-npu-badge { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--text-2); background: var(--surface-2); border:1px solid var(--border); border-radius:100px; padding:7px 14px; margin: -10px 0 20px; max-width: 300px; line-height:1.5; }
+        .sl-npu-dot { width:6px; height:6px; border-radius:50%; background: var(--safe); flex-shrink:0; box-shadow: 0 0 6px var(--safe); }
 
         .sl-reasons-block { width:100%; text-align:left; margin-bottom:20px; }
         .sl-reasons-title { font-family:'Space Grotesk',sans-serif; font-size:11.5px; font-weight:700; letter-spacing:0.1em; color: var(--text-3); }
