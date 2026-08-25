@@ -353,15 +353,20 @@ const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
 async function callGemini(parts) {
   if (!GEMINI_API_KEY) {
-    throw new Error("Gemini API key is missing. Add REACT_APP_GEMINI_API_KEY in Vercel Environment Variables.");
+    throw new Error("Gemini API key is missing. Add REACT_APP_GEMINI_API_KEY in Vercel.");
   }
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts }] }),
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts }],
+      }),
     }
   );
 
@@ -369,7 +374,7 @@ async function callGemini(parts) {
 
   if (!response.ok) {
     console.error("Gemini API Error:", data);
-    throw new Error(data?.error?.message || "Gemini API request failed");
+    throw new Error(data?.error?.message || "Gemini OCR request failed.");
   }
 
   return data;
